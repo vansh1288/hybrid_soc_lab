@@ -1,0 +1,316 @@
+%YAML 1.1
+---
+# Suricata 7.x Configuration for VM2 (Tier 2 NIDS)
+# Network Interface: eth0 (adjust for Azure VNet interface name)
+
+# -----------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------
+vars:
+  address-groups:
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    TELNET_SERVERS: "$HOME_NET"
+    AIM_SERVERS: "$EXTERNAL_NET"
+    DC_SERVERS: "$HOME_NET"
+    DNP3_SERVER: "$HOME_NET"
+    DNP3_CLIENT: "$HOME_NET"
+    MODBUS_CLIENT: "$HOME_NET"
+    MODBUS_SERVER: "$HOME_NET"
+    ENIP_CLIENT: "$HOME_NET"
+    ENIP_SERVER: "$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80,81,311,3128,591,593,8080,8081,8088,8180,8888,9080,9090,9091,9443"
+    SHELLCODE_PORTS: "!80,!81,!311,!3128,!591,!593,!8080,!8081,!8088,!8180,!8888,!9080,!9090,!9091,!9443"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+# -----------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------
+default-log-level: info
+default-log-format: "[%i] %t - (%f:%l) <%d> (%n) -- "
+
+outputs:
+  # EVE JSON output for Splunk ingestion
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /var/log/suricata/eve.json
+      types:
+        - alert:
+            payload: yes
+            payload-printable: yes
+            packet: yes
+            metadata: yes
+            tagged-packets: yes
+        - http:
+            extended: yes
+        - dns:
+            query: yes
+            answer: yes
+        - tls:
+            extended: yes
+        - files:
+            force-magic: no
+            force-md5: no
+        - ssh
+        - smtp
+        - flow
+        - netflow
+        - metadata
+        - stats:
+            totals: yes
+            threads: no
+            deltas: no
+
+  # Unified2 for Barnyard2 compatibility (disabled)
+  - unified2-alert:
+      enabled: no
+
+  # Stats log
+  - stats:
+      enabled: yes
+      filename: /var/log/suricata/stats.log
+      interval: 60
+      append: yes
+
+# -----------------------------------------------------------
+# Application Layer Parsers
+# -----------------------------------------------------------
+app-layer:
+  protocols:
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443,465,563,636,989,990,992,993,994,995,5061,5223,5269,8443,8531,8883,9443
+    http:
+      enabled: yes
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 100kb
+          response-body-limit: 100kb
+          request-body-minimal-inspect-size: 32kb
+          response-body-minimal-inspect-size: 40kb
+          request-body-decompress-layer-limit: 2
+          response-body-decompress-layer-limit: 2
+          double-decode-path: yes
+          double-decode-query: yes
+    dns:
+      enabled: yes
+    ssh:
+      enabled: yes
+    smtp:
+      enabled: yes
+    nfs:
+      enabled: no
+    ikev2:
+      enabled: yes
+    krb5:
+      enabled: yes
+    ntp:
+      enabled: yes
+    dhcp:
+      enabled: yes
+    rdp:
+      enabled: yes
+    snmp:
+      enabled: yes
+    tftp:
+      enabled: yes
+
+# -----------------------------------------------------------
+# Network Interface Configuration
+# -----------------------------------------------------------
+af-packet:
+  - interface: eth0
+    threads: auto
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+    ring-size: 200000
+    block-size: 1048576
+    block-timeout: 10
+    xdp-mode: driver
+    copy-mode: ips
+    copy-iface: eth0
+    use-emergency-flush: yes
+  # Add additional interfaces for multi-homed setups
+  # - interface: eth1
+  #   threads: auto
+  #   cluster-id: 98
+  #   cluster-type: cluster_flow
+  #   defrag: yes
+
+# -----------------------------------------------------------
+# Flow Settings
+# -----------------------------------------------------------
+flow:
+  memcap: 256mb
+  hash-size: 65536
+  prealloc: 10000
+  emergency-recovery: 30
+  managers: 1
+  recyclers: 1
+  default-timeouts:
+    tcp:
+      new: 60
+      established: 3600
+      closed: 120
+      bypass: 100
+      emergency: 10
+    udp:
+      new: 30
+      established: 300
+      bypass: 100
+      emergency: 10
+    icmp:
+      new: 30
+      established: 300
+      bypass: 100
+      emergency: 10
+
+# -----------------------------------------------------------
+# Stream Engine (TCP Reassembly)
+# -----------------------------------------------------------
+stream:
+  memcap: 256mb
+  checksum-validation: yes
+  inline: no
+  reassembly:
+    memcap: 256mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes
+    raw: yes
+    segment-prealloc: 256
+
+# -----------------------------------------------------------
+# Host Table (Host OS Policy for TCP Reassembly)
+# -----------------------------------------------------------
+host:
+  hash-size: 4096
+  prealloc: 1000
+  memcap: 32mb
+  policy: windows
+
+# -----------------------------------------------------------
+# Defrag Settings
+# -----------------------------------------------------------
+defrag:
+  memcap: 32mb
+  hash-size: 65536
+  trackers: 65535
+  max-frags: 65535
+  prealloc: yes
+  timeout: 60
+
+# -----------------------------------------------------------
+# Pattern Matcher Settings
+# -----------------------------------------------------------
+mpm-algo: auto
+spm-algo: auto
+
+# -----------------------------------------------------------
+# Detection Engine Settings
+# -----------------------------------------------------------
+detect:
+  profile: high
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+  prefilter:
+    default: mpm
+
+# -----------------------------------------------------------
+# Threading
+# -----------------------------------------------------------
+threading:
+  set-cpu-affinity: no
+  cpu-affinity:
+    - management-cpu-set:
+        cpu: [ 0 ]
+    - receive-cpu-set:
+        cpu: [ 1, 2, 3, 4, 5, 6, 7 ]
+    - worker-cpu-set:
+        cpu: [ 1, 2, 3, 4, 5, 6, 7 ]
+  detect-thread-ratio: 1.5
+
+# -----------------------------------------------------------
+# Rule Files
+# -----------------------------------------------------------
+default-rule-path: /etc/suricata/rules
+rule-files:
+  - suricata.rules
+  - local.rules
+  - /etc/suricata/rules/*.rules
+
+# -----------------------------------------------------------
+# Classification Config
+# -----------------------------------------------------------
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+
+# -----------------------------------------------------------
+# Threshold Config
+# -----------------------------------------------------------
+threshold-file: /etc/suricata/threshold.config
+
+# -----------------------------------------------------------
+# Lua Scripts
+# -----------------------------------------------------------
+lua:
+  enabled: yes
+  scripts-dir: /etc/suricata/lua/
+
+# -----------------------------------------------------------
+# PCAP File Output (for debugging)
+# -----------------------------------------------------------
+pcap-log:
+  enabled: no
+  filename: /var/log/suricata/suricata.pcap
+  filemode: 0644
+  limit: 100
+  max-files: 10
+
+# -----------------------------------------------------------
+# Packet Capture (AF_PACKET)
+# -----------------------------------------------------------
+pcap-file:
+  enabled: no
+
+# -----------------------------------------------------------
+# Netmap (disabled)
+# -----------------------------------------------------------
+netmap:
+  enabled: no
+
+# -----------------------------------------------------------
+# IP Reputation
+# -----------------------------------------------------------
+reputation:
+  enabled: no
+
+# -----------------------------------------------------------
+# NFS Mount Monitoring (disabled)
+# -----------------------------------------------------------
+nfs:
+  enabled: no

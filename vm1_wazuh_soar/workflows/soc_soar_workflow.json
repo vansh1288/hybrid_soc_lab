@@ -1,0 +1,205 @@
+{
+  "name": "SOC SOAR - Wazuh Alert Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "soc-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "soc-alert-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "const alert = items[0].json;\n\n// Extract fields from Wazuh/Splunk alert format\nconst result = {\n  timestamp: alert['@timestamp'] || alert.timestamp || new Date().toISOString(),\n  agent: {\n    name: alert.agent?.name || alert['agent.name'] || 'Unknown',\n    id: alert.agent?.id || alert['agent.id'] || '000',\n    ip: alert.agent?.ip || alert['agent.ip'] || '0.0.0.0'\n  },\n  rule: {\n    id: alert.rule?.id || alert['rule.id'] || '0',\n    level: alert.rule?.level || alert['rule.level'] || 0,\n    description: alert.rule?.description || alert['rule.description'] || 'No description',\n    groups: alert.rule?.groups || alert['rule.groups'] || [],\n    mitre: alert.rule?.mitre?.id || alert['rule.mitre.id'] || []\n  },\n  winlog: {\n    event_id: alert.winlog?.event_id || alert['winlog.event_id'] || 0,\n    channel: alert.winlog?.channel || alert['winlog.channel'] || '',\n    provider: alert.winlog?.provider_name || alert['winlog.provider_name'] || ''\n  },\n  process: {\n    name: alert.win?.eventdata?.image || alert['win.eventdata.image'] || '',\n    pid: alert.win?.eventdata?.processid || alert['win.eventdata.processid'] || 0,\n    commandline: alert.win?.eventdata?.commandline || alert['win.eventdata.commandline'] || '',\n    parent_name: alert.win?.eventdata?.parentimage || alert['win.eventdata.parentimage'] || '',\n    parent_pid: alert.win?.eventdata?.parentprocessid || alert['win.eventdata.parentprocessid'] || 0\n  },\n  target: {\n    image: alert.win?.eventdata?.targetimage || alert['win.eventdata.targetimage'] || '',\n    pid: alert.win?.eventdata?.targetprocessid || alert['win.eventdata.targetprocessid'] || 0,\n    granted_access: alert.win?.eventdata?.grantedaccess || alert['win.eventdata.grantedaccess'] || ''\n  },\n  file: {\n    hash_sha256: alert.win?.eventdata?.hashes?.sha256 || alert['win.eventdata.hashes.sha256'] || alert.win?.eventdata?.hash || alert['win.eventdata.hash'] || '',\n    path: alert.win?.eventdata?.targetfilename || alert['win.eventdata.targetfilename'] || alert.win?.eventdata?.image || alert['win.eventdata.image'] || '',\n    size: alert.win?.eventdata?.size || alert['win.eventdata.size'] || 0\n  },\n  network: {\n    protocol: alert.win?.eventdata?.protocol || alert['win.eventdata.protocol'] || '',\n    src_ip: alert.win?.eventdata?.sourceip || alert['win.eventdata.sourceip'] || '',\n    src_port: alert.win?.eventdata?.sourceport || alert['win.eventdata.sourceport'] || 0,\n    dst_ip: alert.win?.eventdata?.destinationip || alert['win.eventdata.destinationip'] || '',\n    dst_port: alert.win?.eventdata?.destinationport || alert['win.eventdata.destinationport'] || 0\n  },\n  user: {\n    name: alert.win?.eventdata?.user || alert['win.eventdata.user'] || '',\n    domain: alert.win?.eventdata?.domain || alert['win.eventdata.domain'] || '',\n    sid: alert.win?.eventdata?.usersid || alert['win.eventdata.usersid'] || ''\n  }\n};\n\n// Normalize MITRE IDs to array\nif (typeof result.rule.mitre === 'string') {\n  result.rule.mitre = result.rule.mitre.split(',').map(s => s.trim()).filter(Boolean);\n} else if (!Array.isArray(result.rule.mitre)) {\n  result.rule.mitre = [];\n}\n\n// Determine severity color for Slack\nlet severityColor = '#36a64f'; // Green (low)\nif (result.rule.level >= 12) severityColor = '#ff0000'; // Red (critical)\nelse if (result.rule.level >= 10) severityColor = '#ff8c00'; // Orange (high)\nelse if (result.rule.level >= 7) severityColor = '#ffd700'; // Yellow (medium)\n\nresult.severity_color = severityColor;\nresult.severity_text = result.rule.level >= 12 ? 'CRITICAL' : result.rule.level >= 10 ? 'HIGH' : result.rule.level >= 7 ? 'MEDIUM' : 'LOW';\n\nreturn [{ json: result }];"
+      },
+      "id": "2",
+      "name": "Parse Alert",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.virustotal.com/api/v3/files/{{$json[\"file\"][\"hash_sha256\"]}}",
+        "method": "GET",
+        "options": {
+          "headers": {
+            "x-apikey": "={{$credentials.virustotalApi}}"
+          }
+        },
+        "jsonParameters": true,
+        "options": {}
+      },
+      "id": "3",
+      "name": "VirusTotal Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        750,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": "virustotalApi"
+      },
+      "executeOnce": false,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "const alert = items[0].json;\nconst vtResult = items[1]?.json || {};\n\nlet vtSummary = 'No hash provided or lookup failed';\nlet vtMalicious = 0;\nlet vtSuspicious = 0;\nlet vtUndetected = 0;\nlet vtPermalink = '';\n\nif (vtResult.data && vtResult.data.attributes) {\n  const stats = vtResult.data.attributes.last_analysis_stats || {};\n  vtMalicious = stats.malicious || 0;\n  vtSuspicious = stats.suspicious || 0;\n  vtUndetected = stats.undetected || 0;\n  vtPermalink = `https://www.virustotal.com/gui/file/${alert.file.hash_sha256}`;\n  \n  vtSummary = `Malicious: ${vtMalicious} | Suspicious: ${vtSuspicious} | Undetected: ${vtUndetected}`;\n  \n  if (vtResult.data.attributes.meaningful_name) {\n    vtSummary += ` | File: ${vtResult.data.attributes.meaningful_name}`;\n  }\n  if (vtResult.data.attributes.type_description) {\n    vtSummary += ` | Type: ${vtResult.data.attributes.type_description}`;\n  }\n} else if (vtResult.error) {\n  vtSummary = `VT API Error: ${vtResult.error.message || 'Unknown error'}`;\n}\n\n// Determine overall threat level\nlet threatLevel = 'Unknown';\nif (vtMalicious > 5) threatLevel = 'HIGHLY MALICIOUS';\nelse if (vtMalicious > 0) threatLevel = 'MALICIOUS';\nelse if (vtSuspicious > 0) threatLevel = 'SUSPICIOUS';\nelse if (vtUndetected > 0) threatLevel = 'CLEAN/UNDETECTED';\n\nreturn [{ json: { ...alert, vt_summary: vtSummary, vt_malicious: vtMalicious, vt_suspicious: vtSuspicious, vt_undetected: vtUndetected, vt_permalink: vtPermalink, threat_level: threatLevel } }];"
+      },
+      "id": "4",
+      "name": "Format VT Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const alert = items[0].json;\n\nconst mitreLinks = alert.rule.mitre.map(id => `\n  • <https://attack.mitre.org/techniques/${id.replace('.', '/')}|${id}>`).join('') || 'None';\n\nconst blocks = [\n  {\n    type: 'header',\n    text: {\n      type: 'plain_text',\n      text: `🚨 SOC Alert: ${alert.rule.description}`,\n      emoji: true\n    }\n  },\n  {\n    type: 'section',\n    fields: [\n      { type: 'mrkdwn', text: `*Severity:*\\n${alert.severity_text} (Level ${alert.rule.level})` },\n      { type: 'mrkdwn', text: `*Agent:*\\n${alert.agent.name} (${alert.agent.id})` },\n      { type: 'mrkdwn', text: `*Agent IP:*\\n${alert.agent.ip}` },\n      { type: 'mrkdwn', text: `*Rule ID:*\\n${alert.rule.id}` },\n      { type: 'mrkdwn', text: `*Event ID:*\\n${alert.winlog.event_id} (${alert.winlog.channel})` },\n      { type: 'mrkdwn', text: `*Timestamp:*\\n${new Date(alert.timestamp).toLocaleString()}` }\n    ]\n  },\n  {\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*Process Details*\\n• *Name:* \`${alert.process.name || 'N/A'}\`\\n• *PID:* ${alert.process.pid || 'N/A'}\\n• *Command Line:* \`${alert.process.commandline?.substring(0, 200) || 'N/A'}\`\\n• *Parent:* \`${alert.process.parent_name || 'N/A'}\` (PID: ${alert.process.parent_pid || 'N/A'})`\n    }\n  }\n];\n\nif (alert.target.image) {\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*Target Process*\\n• *Image:* \`${alert.target.image}\`\\n• *PID:* ${alert.target.pid}\\n• *Granted Access:* \`${alert.target.granted_access}\``\n    }\n  });\n}\n\nif (alert.file.hash_sha256) {\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*File Indicators*\\n• *SHA256:* \`${alert.file.hash_sha256}\`\\n• *Path:* \`${alert.file.path}\`\\n• *Size:* ${alert.file.size} bytes`\n    }\n  });\n}\n\nif (alert.network.dst_ip) {\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*Network Indicators*\\n• *Protocol:* ${alert.network.protocol}\\n• *Source:* ${alert.network.src_ip}:${alert.network.src_port}\\n• *Destination:* ${alert.network.dst_ip}:${alert.network.dst_port}`\n    }\n  });\n}\n\nblocks.push({\n  type: 'section',\n  text: {\n    type: 'mrkdwn',\n    text: `*VirusTotal Enrichment*\\n• *Verdict:* ${alert.threat_level}\\n• *Summary:* ${alert.vt_summary}\\n• *Link:* ${alert.vt_permalink || 'N/A'}`\n  }\n});\n\nblocks.push({\n  type: 'section',\n  text: {\n    type: 'mrkdwn',\n    text: `*MITRE ATT&CK Techniques*${mitreLinks}`\n  }\n});\n\nblocks.push({\n  type: 'context',\n  elements: [\n    { type: 'mrkdwn', text: `Alert ID: ${alert.rule.id} | Generated by Wazuh SOAR Pipeline` }\n  ]\n});\n\nreturn [{ json: { blocks, color: alert.severity_color } }];"
+      },
+      "id": "5",
+      "name": "Build Slack Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$credentials.slackWebhook}}",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={{$json[0].blocks}}"
+      },
+      "id": "6",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1500,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": "slackWebhook"
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "options": {},
+        "responseData": {
+          "json": "={{ { success: true, message: 'Alert processed and sent to Slack' } }}"
+        }
+      },
+      "id": "7",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Alert": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal Lookup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format VT Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal Lookup": {
+      "main": [
+        [
+          {
+            "node": "Format VT Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Format VT Results": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack Payload": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

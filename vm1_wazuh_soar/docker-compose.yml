@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-soar
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - soc-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.0
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - WAZUH_API_URL=https://wazuh-manager:55000
+      - NODE_OPTIONS=--max-old-space-size=2048
+    networks:
+      - soc-network
+    depends_on:
+      - wazuh-manager
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.0
+    container_name: wazuh-manager
+    restart: unless-stopped
+    ports:
+      - "1514:1514/udp"
+      - "1515:1515"
+      - "55000:55000"
+    environment:
+      - WAZUH_CLUSTER=single
+      - WAZUH_PASSWORD=${WAZUH_PASSWORD:-StrongPassword123!}
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+    volumes:
+      - ./configs/ossec.conf:/wazuh-config/ossec.conf:ro
+      - ./configs/local_rules.xml:/wazuh-config/rules/local_rules.xml:ro
+      - wazuh_data:/var/ossec/data
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var:/var/ossec/var
+    networks:
+      - soc-network
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  n8n_data:
+  wazuh_data:
+  wazuh_logs:
+  wazuh_etc:
+  wazuh_queue:
+  wazuh_var:
+
+networks:
+  soc-network:
+    driver: bridge

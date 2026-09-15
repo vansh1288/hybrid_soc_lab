@@ -1,0 +1,238 @@
+<Sysmon schemaversion="4.81">
+  <!-- Sysmon Configuration based on SwiftOnSecurity schema -->
+  <!-- Optimized for Windows Server 2022 with comprehensive telemetry -->
+
+  <!-- Event ID 1: Process Creation -->
+  <EventFiltering>
+    <RuleGroup name="Process Creation - Comprehensive">
+      <ProcessCreate onmatch="include">
+        <!-- Include all process creation events -->
+        <Image condition="is">*</Image>
+        <!-- Capture command line for all processes -->
+        <CommandLine condition="is">*</CommandLine>
+        <!-- Capture parent process info -->
+        <ParentImage condition="is">*</ParentImage>
+        <ParentCommandLine condition="is">*</ParentCommandLine>
+        <!-- Capture integrity level -->
+        <IntegrityLevel condition="is">*</IntegrityLevel>
+        <!-- Capture hash for all executables -->
+        <Hashes condition="is">SHA256,IMPHASH</Hashes>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- Event ID 2: File Creation Time Modification -->
+    <RuleGroup name="File Time Modification">
+      <FileCreateTime onmatch="include">
+        <TargetFilename condition="is">*</TargetFilename>
+        <Image condition="is">*</Image>
+      </FileCreateTime>
+    </RuleGroup>
+
+    <!-- Event ID 3: Network Connection -->
+    <RuleGroup name="Network Connections - Comprehensive">
+      <NetworkConnect onmatch="include">
+        <!-- Include all outbound connections -->
+        <DestinationIp condition="is">*</DestinationIp>
+        <DestinationPort condition="is">*</DestinationPort>
+        <DestinationHostname condition="is">*</DestinationHostname>
+        <Image condition="is">*</Image>
+        <SourceIp condition="is">*</SourceIp>
+        <SourcePort condition="is">*</SourcePort>
+        <Protocol condition="is">tcp,udp</Protocol>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- Event ID 4: Sysmon Service State Change -->
+    <RuleGroup name="Sysmon Service State">
+      <SysmonStateChange onmatch="include">
+        <State condition="is">*</State>
+      </SysmonStateChange>
+    </RuleGroup>
+
+    <!-- Event ID 5: Process Termination -->
+    <RuleGroup name="Process Termination">
+      <ProcessTerminate onmatch="include">
+        <Image condition="is">*</Image>
+      </ProcessTerminate>
+    </RuleGroup>
+
+    <!-- Event ID 6: Driver Load -->
+    <RuleGroup name="Driver Load">
+      <DriverLoad onmatch="include">
+        <ImageLoaded condition="is">*</ImageLoaded>
+        <Hashes condition="is">SHA256</Hashes>
+      </DriverLoad>
+    </RuleGroup>
+
+    <!-- Event ID 7: Image Load (DLL) -->
+    <RuleGroup name="Image Load - DLLs">
+      <ImageLoad onmatch="include">
+        <Image condition="is">*</Image>
+        <ImageLoaded condition="is">*.dll</ImageLoaded>
+        <Hashes condition="is">SHA256</Hashes>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- Event ID 8: CreateRemoteThread -->
+    <RuleGroup name="CreateRemoteThread - Critical">
+      <CreateRemoteThread onmatch="include">
+        <SourceImage condition="is">*</SourceImage>
+        <TargetImage condition="is">*</TargetImage>
+        <NewThreadStartAddress condition="is">*</NewThreadStartAddress>
+        <StartModule condition="is">*</StartModule>
+        <StartFunction condition="is">*</StartFunction>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- Event ID 9: Raw Disk Access -->
+    <RuleGroup name="Raw Disk Access">
+      <RawAccessRead onmatch="include">
+        <Image condition="is">*</Image>
+        <Device condition="is">*</Device>
+      </RawAccessRead>
+    </RuleGroup>
+
+    <!-- Event ID 10: Process Access -->
+    <RuleGroup name="Process Access - LSASS Focus">
+      <ProcessAccess onmatch="include">
+        <SourceImage condition="is">*</SourceImage>
+        <TargetImage condition="is">*</TargetImage>
+        <GrantedAccess condition="bitmask">0x1FFFFF</GrantedAccess>
+        <CallTrace condition="is">*</CallTrace>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- Event ID 11: File Creation -->
+    <RuleGroup name="File Creation - Comprehensive">
+      <FileCreate onmatch="include">
+        <TargetFilename condition="is">*</TargetFilename>
+        <Image condition="is">*</Image>
+        <CreationUtcTime condition="is">*</CreationUtcTime>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- Event ID 12/13/14: Registry Events -->
+    <RuleGroup name="Registry - Comprehensive">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="is">*</TargetObject>
+        <Details condition="is">*</Details>
+        <Image condition="is">*</Image>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- Event ID 15: File Stream Creation (Alternate Data Streams) -->
+    <RuleGroup name="File Stream - ADS Detection">
+      <FileCreateStreamHash onmatch="include">
+        <TargetFilename condition="is">*:*</TargetFilename>
+        <Image condition="is">*</Image>
+        <Hashes condition="is">SHA256</Hashes>
+      </FileCreateStreamHash>
+    </RuleGroup>
+
+    <!-- Event ID 16: Sysmon Configuration Change -->
+    <RuleGroup name="Sysmon Config Change">
+      <ConfigurationChange onmatch="include">
+        <Configuration condition="is">*</Configuration>
+      </ConfigurationChange>
+    </RuleGroup>
+
+    <!-- Event ID 17: Pipe Creation -->
+    <RuleGroup name="Pipe Creation">
+      <PipeEvent onmatch="include">
+        <PipeName condition="is">*</PipeName>
+        <Image condition="is">*</Image>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- Event ID 18: WMI Event Filter/Consumer/Binding -->
+    <RuleGroup name="WMI Persistence">
+      <WmiEvent onmatch="include">
+        <Filter condition="is">*</Filter>
+        <Consumer condition="is">*</Consumer>
+        <Operation condition="is">*</Operation>
+      </WmiEvent>
+    </RuleGroup>
+
+    <!-- Event ID 19: WMI Event Activity (deprecated, use 18) -->
+    <RuleGroup name="WMI Event Activity">
+      <WmiActivity onmatch="include">
+        <User condition="is">*</User>
+        <Operation condition="is">*</Operation>
+      </WmiActivity>
+    </RuleGroup>
+
+    <!-- Event ID 20: Named Pipe Connection -->
+    <RuleGroup name="Named Pipe Connection">
+      <PipeEvent onmatch="include">
+        <PipeName condition="is">*</PipeName>
+        <Image condition="is">*</Image>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- Event ID 21: Named Pipe Creation -->
+    <RuleGroup name="Named Pipe Creation">
+      <PipeEvent onmatch="include">
+        <PipeName condition="is">*</PipeName>
+        <Image condition="is">*</Image>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- Event ID 22: DNS Query -->
+    <RuleGroup name="DNS Query">
+      <DnsQuery onmatch="include">
+        <Query condition="is">*</Query>
+        <QueryResults condition="is">*</QueryResults>
+        <Image condition="is">*</Image>
+      </DnsQuery>
+    </RuleGroup>
+
+    <!-- Event ID 23: File Delete (Logged as FileCreate with DeleteFile) -->
+    <RuleGroup name="File Delete">
+      <FileDelete onmatch="include">
+        <TargetFilename condition="is">*</TargetFilename>
+        <Image condition="is">*</Image>
+      </FileDelete>
+    </RuleGroup>
+
+    <!-- Event ID 24: Clipboard Change -->
+    <RuleGroup name="Clipboard Change">
+      <ClipboardChange onmatch="include">
+        <Image condition="is">*</Image>
+        <Content condition="is">*</Content>
+      </ClipboardChange>
+    </RuleGroup>
+
+    <!-- Event ID 25: Process Tampering (Process Herpaderping) -->
+    <RuleGroup name="Process Tampering">
+      <ProcessTampering onmatch="include">
+        <Image condition="is">*</Image>
+        <TargetImage condition="is">*</TargetImage>
+      </ProcessTampering>
+    </RuleGroup>
+
+    <!-- Event ID 26: File Block Executable -->
+    <RuleGroup name="File Block Executable">
+      <FileBlockExecutable onmatch="include">
+        <Image condition="is">*</Image>
+        <TargetFilename condition="is">*</TargetFilename>
+      </FileBlockExecutable>
+    </RuleGroup>
+
+    <!-- Event ID 27: File Block Shredding -->
+    <RuleGroup name="File Block Shredding">
+      <FileBlockShredding onmatch="include">
+        <Image condition="is">*</Image>
+        <TargetFilename condition="is">*</TargetFilename>
+      </FileBlockShredding>
+    </RuleGroup>
+
+    <!-- Event ID 28: File Block Remote Device -->
+    <RuleGroup name="File Block Remote Device">
+      <FileBlockRemoteDevice onmatch="include">
+        <Image condition="is">*</Image>
+        <TargetFilename condition="is">*</TargetFilename>
+      </FileBlockRemoteDevice>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

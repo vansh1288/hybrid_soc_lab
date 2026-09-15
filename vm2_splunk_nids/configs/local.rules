@@ -1,0 +1,454 @@
+# Suricata Custom Rules for Metasploit C2 Detection
+# Location: /etc/suricata/rules/local.rules
+# Compatible with Suricata 7.x
+
+# ============================================================
+# METASPLOIT REVERSE TCP / METERPRETER
+# ============================================================
+
+# Metasploit Reverse TCP - Default Stager (Stage 1)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (
+    msg:"EXPLOIT Metasploit Reverse TCP Stager Detected";
+    flow:to_server,established;
+    content:"|00 00 00 00 00 00 00 00|";
+    depth:8;
+    offset:0;
+    byte_test:4,>,0,4,little;
+    byte_test:4,<,1000000,4,little;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000001;
+    rev:3;
+    metadata:created_at 2024_01_15, updated_at 2024_06_20;
+    tag:metasploit,tag:c2,tag:reverse_tcp;
+)
+
+# Metasploit Meterpreter - Stage 2 (Reflective DLL Injection)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (
+    msg:"EXPLOIT Metasploit Meterpreter Stage 2 - Reflective Loader";
+    flow:to_server,established;
+    content:"|4d 5a|";  # MZ header
+    offset:0;
+    depth:2;
+    content:"|50 45 00 00|";  # PE header
+    distance:0;
+    within:64;
+    pcre:"/This program cannot be run in DOS mode/smi";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000002;
+    rev:3;
+    metadata:created_at 2024_01_15, updated_at 2024_06_20;
+    tag:metasploit,tag:meterpreter,tag:stage2;
+)
+
+# Meterpreter TLV Packet Detection (Type-Length-Value)
+alert tcp $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit Meterpreter TLV Outbound Traffic";
+    flow:established,to_server;
+    content:"|00 00 00 00|";  # TLV header placeholder
+    depth:4;
+    byte_test:2,>,0,0,big;  # Type > 0
+    byte_test:2,<,1000,2,big;  # Length reasonable
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000003;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:meterpreter,tag:tlv;
+)
+
+# Meterpreter Heartbeat / Keep-alive
+alert tcp $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit Meterpreter Heartbeat";
+    flow:established,to_server;
+    content:"|00 00 00 0c|";  # TLV_TYPE_CORE_HEARTBEAT (12) with length
+    depth:4;
+    threshold:type limit, track by_src, count 1, seconds 300;
+    classtype:trojan-activity;
+    sid:2000004;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:meterpreter,tag:heartbeat;
+)
+
+# ============================================================
+# METASPLOIT HTTP/S C2 (Meterpreter over HTTP)
+# ============================================================
+
+# Metasploit HTTP C2 - Default User-Agent
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit HTTP C2 - Default User-Agent";
+    flow:to_server,established;
+    http.user_agent;
+    content:"Mozilla/4.0 (compatible; MSIE 6.1; Windows NT)";
+    fast_pattern;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000010;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:http_c2,tag:user_agent;
+)
+
+# Metasploit HTTP C2 - URI Patterns
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit HTTP C2 - URI Pattern";
+    flow:to_server,established;
+    http.uri;
+    pcre:"/\/(process|download|upload|init|checkin|heartbeat)\.php(\?.*)?$/i";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000011;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:http_c2,tag:uri;
+)
+
+# Metasploit HTTP C2 - Session ID in Cookie
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit HTTP C2 - Session Cookie";
+    flow:to_server,established;
+    http.cookie;
+    pcre:"/session=[a-f0-9]{32}/i";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000012;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:http_c2,tag:cookie;
+)
+
+# ============================================================
+# METASPLOIT DNS C2
+# ============================================================
+
+# Metasploit DNS C2 - Long Subdomain Exfiltration
+alert dns $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Metasploit DNS C2 - Data Exfiltration";
+    flow:to_server;
+    dns.query;
+    pcre:"/^[a-zA-Z0-9]{50,}\./";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000020;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:dns_c2,tag:exfiltration;
+)
+
+# ============================================================
+# METASPLOIT PAYLOAD SPECIFIC SIGNATURES
+# ============================================================
+
+# Windows/x64 Meterpreter Reverse TCP - Default LPORT 4444
+alert tcp $EXTERNAL_NET 4444 -> $HOME_NET any (
+    msg:"EXPLOIT Metasploit Windows x64 Meterpreter Reverse TCP (Port 4444)";
+    flow:to_client,established;
+    content:"|4d 5a|";
+    offset:0;
+    depth:2;
+    threshold:type limit, track by_dst, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000030;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:meterpreter,tag:x64,tag:port_4444;
+)
+
+# Windows Meterpreter Reverse HTTP - Default LPORT 8080
+alert tcp $EXTERNAL_NET 8080 -> $HOME_NET any (
+    msg:"EXPLOIT Metasploit Windows Meterpreter Reverse HTTP (Port 8080)";
+    flow:to_client,established;
+    http.response;
+    content:"<html><body><h1>It works!</h1></body></html>";
+    fast_pattern;
+    threshold:type limit, track by_dst, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000031;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:metasploit,tag:meterpreter,tag:reverse_http;
+)
+
+# ============================================================
+# SUSPICIOUS OUTBOUND USER AGENTS (Common in Malware)
+# ============================================================
+
+# Generic suspicious User-Agents
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"SUSPICIOUS Outbound HTTP - Suspicious User Agent";
+    flow:to_server,established;
+    http.user_agent;
+    pcre:"/(curl|wget|python-requests|go-http-client|java\/|powershell|winhttp|msie 6\.0|msie 7\.0|msie 8\.0|bot|crawler|spider|scanner)/i";
+    threshold:type limit, track by_src, count 5, seconds 60;
+    classtype:policy-violation;
+    sid:2000100;
+    rev:3;
+    metadata:created_at 2024_01_15;
+    tag:suspicious_ua,tag:outbound;
+)
+
+# Empty or Missing User-Agent
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"SUSPICIOUS Outbound HTTP - Empty/Missing User Agent";
+    flow:to_server,established;
+    http.user_agent;
+    content:"|00|";
+    depth:1;
+    threshold:type limit, track by_src, count 5, seconds 60;
+    classtype:policy-violation;
+    sid:2000101;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:suspicious_ua,tag:outbound;
+)
+
+# ============================================================
+# CREDENTIAL ACCESS / LATERAL MOVEMENT INDICATORS
+# ============================================================
+
+# SMB/NTLM Relay Attack Indicators
+alert tcp $HOME_NET any -> $HOME_NET 445 (
+    msg:"ATTACK SMB NTLM Relay Attempt";
+    flow:to_server,established;
+    content:"|ff|SMB";
+    offset:0;
+    depth:4;
+    content:"|a2|";  # SESSION_SETUP_ANDX
+    offset:4;
+    depth:1;
+    byte_test:1,&,0x01,13;  # SECURITY_SIGNATURES_REQUIRED not set
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000200;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:lateral_movement,tag:ntlm_relay,tag:smb;
+)
+
+# PsExec / Service Creation via SMB
+alert tcp $HOME_NET any -> $HOME_NET 445 (
+    msg:"ATTACK PsExec Service Creation via SMB";
+    flow:to_server,established;
+    content:"|ff|SMB";
+    offset:0;
+    depth:4;
+    content:"|a2|";  # SESSION_SETUP
+    offset:4;
+    depth:1;
+    content:"PSEXESVC";
+    nocase;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000201;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:lateral_movement,tag:psexec,tag:smb;
+)
+
+# WMI Execution (wmic.exe remote)
+alert tcp $HOME_NET any -> $HOME_NET 135 (
+    msg:"ATTACK WMI Remote Execution Attempt";
+    flow:to_server,established;
+    content:"|05 00 0b|";  # RPC Bind
+    depth:3;
+    content:"|8a 88 5d 41 1f 1c 2a 4f 8c 3d 4a 3a 5b 4c 3d 4e|";  # WMI UUID
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000202;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:lateral_movement,tag:wmi,tag:rpc;
+)
+
+# ============================================================
+# POWERSHELL EMPIRE / COBALT STRIKE INDICATORS
+# ============================================================
+
+# Cobalt Strike Malleable C2 - Default Profile
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Cobalt Strike Beacon - Default Malleable Profile";
+    flow:to_server,established;
+    http.uri;
+    pcre:"/^\/[a-z0-9]{4,}\/.*/i";
+    http.client_body;
+    content:"|00 00 00 00|";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000300;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:cobalt_strike,tag:beacon,tag:c2;
+)
+
+# PowerShell Empire - Default Listener
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE PowerShell Empire C2 - Default Listener";
+    flow:to_server,established;
+    http.uri;
+    content:"/admin/get.php";
+    http.header;
+    content:"Agent";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000301;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:powershell_empire,tag:c2;
+)
+
+# ============================================================
+# COMMON EXPLOIT PATTERNS
+# ============================================================
+
+# EternalBlue (MS17-010) SMB Exploit
+alert tcp $EXTERNAL_NET any -> $HOME_NET 445 (
+    msg:"EXPLOIT EternalBlue MS17-010 SMB Exploit Attempt";
+    flow:to_server,established;
+    content:"|ff|SMB";
+    offset:0;
+    depth:4;
+    content:"|00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00|";
+    offset:36;
+    depth:16;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000400;
+    rev:3;
+    metadata:created_at 2024_01_15;
+    tag:eternalblue,tag:ms17-010,tag:smb;
+)
+
+# BlueKeep (CVE-2019-0708) RDP Exploit
+alert tcp $EXTERNAL_NET any -> $HOME_NET 3389 (
+    msg:"EXPLOIT BlueKeep CVE-2019-0708 RDP Exploit Attempt";
+    flow:to_server,established;
+    content:"|03 00 00 13 0e d0 00 00 12 34 00 02 01 08 00 02|";
+    offset:0;
+    depth:16;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000401;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:bluekeep,tag:cve_2019_0708,tag:rdp;
+)
+
+# PrintNightmare (CVE-2021-34527) Spooler Exploit
+alert tcp $HOME_NET any -> $HOME_NET 445 (
+    msg:"EXPLOIT PrintNightmare CVE-2021-34527 Spooler Exploit";
+    flow:to_server,established;
+    content:"|ff|SMB";
+    offset:0;
+    depth:4;
+    content:"|00 00 00 00|";
+    offset:36;
+    depth:4;
+    content:"spoolss";
+    nocase;
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:attempted-admin;
+    sid:2000402;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:printnightmare,tag:cve_2021_34527,tag:smb;
+)
+
+# ============================================================
+# DATA EXFILTRATION INDICATORS
+# ============================================================
+
+# Large Outbound Data Transfer (>100MB in single flow)
+alert flow $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"ANOMALY Large Outbound Data Transfer (>100MB)";
+    flow:to_server;
+    flowbytes:>104857600;
+    threshold:type limit, track by_src, count 1, seconds 3600;
+    classtype:policy-violation;
+    sid:2000500;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:exfiltration,tag:large_transfer;
+)
+
+# Multiple Connections to Same External IP (Beaconing)
+alert flow $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"ANOMALY Potential Beaconing - Repeated Connections";
+    flow:to_server;
+    flow_count:>20;
+    flowint:beacon_count,+,1;
+    flowint:beacon_count,>,10;
+    threshold:type limit, track by_src,dst, count 1, seconds 300;
+    classtype:policy-violation;
+    sid:2000501;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:beaconing,tag:c2;
+)
+
+# ============================================================
+# CRYPTOMINER INDICATORS
+# ============================================================
+
+# Stratum Mining Protocol
+alert tcp $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Cryptocurrency Miner - Stratum Protocol";
+    flow:to_server,established;
+    content:"mining.subscribe";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:trojan-activity;
+    sid:2000600;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:cryptominer,tag:stratum;
+)
+
+# Common Mining Pool Domains
+alert dns $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"MALWARE Cryptocurrency Miner - Mining Pool DNS Query";
+    flow:to_server;
+    dns.query;
+    pcre:"/(xmr|monero|eth|ethereum|mine|pool|stratum|nanopool|supportxmr|minexmr|f2pool|antpool|slushpool|btc\.com|viaBTC|bitcoin\.com)\./i";
+    threshold:type limit, track by_src, count 1, seconds 3600;
+    classtype:trojan-activity;
+    sid:2000601;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:cryptominer,tag:dns;
+)
+
+# ============================================================
+# AZURE / CLOUD SPECIFIC THREATS
+# ============================================================
+
+# Azure Instance Metadata Service (IMDS) Access from Unexpected Process
+alert http $HOME_NET any -> 169.254.169.254 80 (
+    msg:"SUSPICIOUS Azure IMDS Access - Potential Credential Theft";
+    flow:to_server,established;
+    http.uri;
+    content:"/metadata/identity/oauth2/token";
+    http.header;
+    content:"Metadata";
+    content:"true";
+    threshold:type limit, track by_src, count 1, seconds 60;
+    classtype:policy-violation;
+    sid:2000700;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:azure,tag:imds,tag:credential_theft;
+)
+
+# Azure CLI / PowerShell Cloud Shell User-Agent
+alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"SUSPICIOUS Azure CLI/PowerShell Cloud Shell Access";
+    flow:to_server,established;
+    http.user_agent;
+    pcre:"/(azure-cli|azure-powershell|azsdk|msrest)/i";
+    threshold:type limit, track by_src, count 5, seconds 300;
+    classtype:policy-violation;
+    sid:2000701;
+    rev:2;
+    metadata:created_at 2024_01_15;
+    tag:azure,tag:cli,tag:cloud_shell;
+)

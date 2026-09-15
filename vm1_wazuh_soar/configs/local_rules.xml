@@ -1,0 +1,338 @@
+<group name="local,sysmon,windows,">
+
+  <!-- ============================================================
+       Sysmon Event ID 1 - Process Creation (LOLBins)
+       ============================================================ -->
+  <rule id="100001" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\powershell\.exe$</field>
+    <field name="win.eventdata.commandline">-enc|-encodedcommand|-e\s|-nop|-noprofile|-w\s+hidden|-windowstyle\s+hidden|bypass|downloadstring|invoke-expression|iex|frombase64string</field>
+    <description>Suspicious PowerShell execution detected - Encoded command or bypass attempt</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1027</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100002" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\certutil\.exe$</field>
+    <field name="win.eventdata.commandline">-decode|-urlcache|-split|-f\s|-verifyctl</field>
+    <description>Suspicious Certutil execution detected - File download or decode attempt</description>
+    <mitre>
+      <id>T1105</id>
+      <id>T1140</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100003" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\mshta\.exe$</field>
+    <field name="win.eventdata.commandline">http|javascript|vbscript|mshtml|hta:|data:</field>
+    <description>Suspicious MSHTA execution detected - Remote code execution attempt</description>
+    <mitre>
+      <id>T1218.005</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100004" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\regsvr32\.exe$</field>
+    <field name="win.eventdata.commandline">/s|/u|/i:|http|scrobj\.dll</field>
+    <description>Suspicious Regsvr32 execution detected - COM scriptlet execution</description>
+    <mitre>
+      <id>T1218.010</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100005" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\rundll32\.exe$</field>
+    <field name="win.eventdata.commandline">javascript|vbscript|http|shell32\.dll,Control_RunDLL|advpack\.dll,LaunchINFSection</field>
+    <description>Suspicious Rundll32 execution detected - DLL hijacking or code execution</description>
+    <mitre>
+      <id>T1218.011</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100006" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\wmic\.exe$</field>
+    <field name="win.eventdata.commandline">process\s+call\s+create|/node:|/user:|/password:|shadowcopy\s+delete</field>
+    <description>Suspicious WMIC execution detected - Remote process creation or shadow copy deletion</description>
+    <mitre>
+      <id>T1047</id>
+      <id>T1490</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100007" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\cmstp\.exe$</field>
+    <field name="win.eventdata.commandline">/s|/au|/nf|/ni|/ns|inf</field>
+    <description>Suspicious CMSTP execution detected - UAC bypass via INF file</description>
+    <mitre>
+      <id>T1218.003</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100008" level="10">
+    <if_sid>61601</if_sid>
+    <field name="win.eventdata.image">\\installutil\.exe$</field>
+    <field name="win.eventdata.commandline">/logfile=|/logtoconsole|/u|/uninstall|http|assembly</field>
+    <description>Suspicious InstallUtil execution detected - .NET assembly execution bypass</description>
+    <mitre>
+      <id>T1218.004</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 3 - Network Connection
+       ============================================================ -->
+  <rule id="100010" level="10">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.destinationport">4444|5555|6666|7777|8888|9999|1234|31337|44444|54321</field>
+    <description>Suspicious outbound connection to common C2 ports</description>
+    <mitre>
+      <id>T1071.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100011" level="10">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.image">\\powershell\.exe$|\\cmd\.exe$|\\wscript\.exe$|\\cscript\.exe$|\\rundll32\.exe$|\\regsvr32\.exe$|\\mshta\.exe$</field>
+    <description>Suspicious process making network connection (LOLBin)</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1059.003</id>
+      <id>T1059.005</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 8 - CreateRemoteThread
+       ============================================================ -->
+  <rule id="100020" level="12">
+    <if_sid>61608</if_sid>
+    <field name="win.eventdata.targetimage">\\lsass\.exe$</field>
+    <description>CreateRemoteThread targeting LSASS - Credential theft attempt (T1003.001)</description>
+    <mitre>
+      <id>T1003.001</id>
+      <id>T1055</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100021" level="12">
+    <if_sid>61608</if_sid>
+    <field name="win.eventdata.targetimage">\\svchost\.exe$|\\explorer\.exe$|\\winlogon\.exe$|\\csrss\.exe$|\\services\.exe$</field>
+    <description>CreateRemoteThread targeting critical system process - Process injection (T1055)</description>
+    <mitre>
+      <id>T1055</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 10 - Process Access (LSASS Targeting)
+       ============================================================ -->
+  <rule id="100030" level="12">
+    <if_sid>61610</if_sid>
+    <field name="win.eventdata.targetimage">\\lsass\.exe$</field>
+    <field name="win.eventdata.grantedaccess">0x1010|0x1f0fff|0x001fffff|0x001fffff</field>
+    <description>Process Access to LSASS with high privileges - Credential dumping (T1003.001)</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100031" level="12">
+    <if_sid>61610</if_sid>
+    <field name="win.eventdata.targetimage">\\lsass\.exe$</field>
+    <field name="win.eventdata.grantedaccess">0x0010|0x0020|0x0008|0x001f|0x0038|0x1fffff</field>
+    <description>Process Access to LSASS - Potential credential access attempt</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100032" level="10">
+    <if_sid>61610</if_sid>
+    <field name="win.eventdata.targetimage">\\lsass\.exe$</field>
+    <description>Process Access to LSASS - Monitoring for credential access</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 11 - File Creation
+       ============================================================ -->
+  <rule id="100040" level="10">
+    <if_sid>61611</if_sid>
+    <field name="win.eventdata.targetfilename">\\AppData\\Local\\Temp\\.*\.(exe|dll|ps1|bat|cmd|vbs|js|jar|py|scr|msi)</field>
+    <description>Suspicious executable file created in Temp directory</description>
+    <mitre>
+      <id>T1059</id>
+      <id>T1105</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100041" level="10">
+    <if_sid>61611</if_sid>
+    <field name="win.eventdata.targetfilename">\\Startup\\.*\.(exe|bat|cmd|lnk|ps1|vbs|js)</field>
+    <description>Persistence via Startup folder - File creation</description>
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100042" level="10">
+    <if_sid>61611</if_sid>
+    <field name="win.eventdata.targetfilename">\\Tasks\\.*\.job|\\Windows\\Tasks\\.*\.job</field>
+    <description>Scheduled task file creation - Potential persistence (T1053)</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 13 - Registry Modification
+       ============================================================ -->
+  <rule id="100050" level="10">
+    <if_sid>61613</if_sid>
+    <field name="win.eventdata.targetobject">HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run|HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce|HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run|HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce</field>
+    <description>Registry Run/RunOnce modification - Persistence (T1547.001)</description>
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100051" level="10">
+    <if_sid>61613</if_sid>
+    <field name="win.eventdata.targetobject">HKLM\\SYSTEM\\CurrentControlSet\\Services\\.*\\ImagePath</field>
+    <description>Service ImagePath modification - Service persistence or hijacking (T1543.003)</description>
+    <mitre>
+      <id>T1543.003</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100052" level="10">
+    <if_sid>61613</if_sid>
+    <field name="win.eventdata.targetobject">HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\.*\\Debugger</field>
+    <description>Image File Execution Options (IFEO) Debugger set - Persistence/Defense Evasion (T1546.012)</description>
+    <mitre>
+      <id>T1546.012</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100053" level="10">
+    <if_sid>61613</if_sid>
+    <field name="win.eventdata.targetobject">HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\\UseLogonCredential</field>
+    <field name="win.eventdata.details">1</field>
+    <description>WDigest UseLogonCredential enabled - Credential theft facilitation (T1003.001)</description>
+    <mitre>
+      <id>T1003.001</id>
+      <id>T1556.002</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 12/13/14 - Registry (WMI Event Subscription)
+       ============================================================ -->
+  <rule id="100060" level="12">
+    <if_sid>61613</if_sid>
+    <field name="win.eventdata.targetobject">HKLM\\SOFTWARE\\Microsoft\\WBEM\\Scripting\\.*|HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WMI\\.*|__EventFilter|__FilterToConsumerBinding|CommandLineEventConsumer|ActiveScriptEventConsumer</field>
+    <description>WMI Event Subscription persistence detected (T1546.003)</description>
+    <mitre>
+      <id>T1546.003</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Sysmon Event ID 15/16/17/18 - File Stream/Registry/Clipboard
+       ============================================================ -->
+  <rule id="100070" level="10">
+    <if_sid>61615</if_sid>
+    <field name="win.eventdata.targetfilename">:Zone.Identifier|:*.exe|:*.dll|:*.ps1|:*.bat</field>
+    <description>Alternate Data Stream (ADS) created - Defense evasion (T1564.004)</description>
+    <mitre>
+      <id>T1564.004</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Windows Security Event Log - Authentication
+       ============================================================ -->
+  <rule id="100100" level="10">
+    <if_sid>18109</if_sid>
+    <field name="win.eventdata.logontype">3</field>
+    <field name="win.eventdata.authenticationpackagename">Negotiate|NTLM</field>
+    <frequency>10</frequency>
+    <timeframe>60</timeframe>
+    <description>Multiple network logon failures - Potential brute force (T1110)</description>
+    <mitre>
+      <id>T1110.001</id>
+      <id>T1110.003</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100101" level="12">
+    <if_sid>18108</if_sid>
+    <field name="win.eventdata.logontype">3</field>
+    <field name="win.eventdata.authenticationpackagename">Negotiate|NTLM</field>
+    <field name="win.eventdata.workstationname">.*</field>
+    <description>Successful network logon from unusual workstation - Lateral movement check</description>
+    <mitre>
+      <id>T1021.004</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ============================================================
+       Custom High-Level Aggregation Rules
+       ============================================================ -->
+  <rule id="100200" level="12" frequency="3" timeframe="300">
+    <if_matched_sid>100030,100031,100020</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple LSASS targeting events from same agent - Active credential dumping campaign</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="100201" level="12" frequency="5" timeframe="300">
+    <if_matched_sid>100001,100002,100003,100004,100005,100006,100007,100008</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple LOLBin executions from same agent - Active scripting attack</description>
+    <mitre>
+      <id>T1059</id>
+      <id>T1218</id>
+    </mitre>
+    <options>alert_by_email</options>
+  </rule>
+
+</group>
