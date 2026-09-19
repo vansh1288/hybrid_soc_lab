@@ -18,7 +18,7 @@ param(
     [string]$WazuhAgentGroup = "windows,windows-server-2022",
 
     [Parameter(Mandatory=$false)]
-    [string]$SysmonConfigPath = "C:\Windows\System32\drivers\etc\sysmonconfig.xml",
+    [string]$SysmonTargetConfigPath = "C:\Windows\System32\drivers\etc\sysmonconfig.xml",
 
     [Parameter(Mandatory=$false)]
     [string]$WazuhAgentVersion = "4.7.0",
@@ -33,12 +33,18 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-# Colors for output
+# Establish absolute paths based on script location
+$scriptRoot = Split-Path -Parent$MyInvocation.MyCommand.Path
+$repoSysmonConfig = Join-Path$scriptRoot "..\sysmonconfig.xml"
+$repoWazuhConfig = Join-Path$scriptRoot "..\ossec.conf"
+
+# Colors for output - Fixed for PS 5.1 compatibility
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $colors = @{ INFO = "Green"; WARN = "Yellow"; ERROR = "Red"; SUCCESS = "Cyan" }
-    $color = $colors[$Level] ?? "White"
+    $color = $colors[$Level]
+    if (-not $color) {$color = "White" }
     Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
 }
 
@@ -55,7 +61,7 @@ if (-not (Test-IsAdmin)) {
 
 Write-Log "Starting Windows Target Setup for Hybrid Cloud SOC Lab"
 Write-Log "Wazuh Manager IP: $WazuhManagerIP"
-Write-Log "Sysmon Config: $SysmonConfigPath"
+Write-Log "Sysmon Template: $repoSysmonConfig"
 
 # Create download directory
 if (-not (Test-Path $DownloadPath)) {
@@ -69,8 +75,17 @@ if (-not (Test-Path $DownloadPath)) {
 Write-Log "=== Installing Sysmon ==="
 
 $sysmonUrl = "https://download.sysinternals.com/files/Sysmon.zip"
-$sysmonZip = Join-Path $DownloadPath "Sysmon.zip"
-$sysmonExe = Join-Path $DownloadPath "Sysmon64.exe"
+$sysmonZip = Join-Path$DownloadPath "Sysmon.zip"
+$sysmonExe = Join-Path$DownloadPath "Sysmon64.exe"
+
+# Copy repo config to target path
+if (Test-Path $repoSysmonConfig) {
+    Copy-Item -Path $repoSysmonConfig -Destination$SysmonTargetConfigPath -Force
+    Write-Log "Copied Sysmon template to $SysmonTargetConfigPath"
+} else {
+    Write-Log "Sysmon config template not found at $repoSysmonConfig!" "ERROR"
+    exit 1
+}
 
 if (Get-Service "Sysmon" -ErrorAction SilentlyContinue) {
     if ($ForceReinstall) {
@@ -86,7 +101,7 @@ if (Get-Service "Sysmon" -ErrorAction SilentlyContinue) {
 
 Write-Log "Downloading Sysmon from $sysmonUrl..."
 try {
-    Invoke-WebRequest -Uri $sysmonUrl -OutFile $sysmonZip -UseBasicParsing
+    Invoke-WebRequest -Uri $sysmonUrl -OutFile$sysmonZip -UseBasicParsing
     Write-Log "Download complete."
 } catch {
     Write-Log "Failed to download Sysmon: $($_.Exception.Message)" "ERROR"
@@ -94,9 +109,9 @@ try {
 }
 
 Write-Log "Extracting Sysmon..."
-Expand-Archive -Path $sysmonZip -DestinationPath $DownloadPath -Force
+Expand-Archive -Path $sysmonZip -DestinationPath$DownloadPath -Force
 if (-not (Test-Path $sysmonExe)) {
-    $sysmonExe = Join-Path $DownloadPath "Sysmon.exe"
+    $sysmonExe = Join-Path$DownloadPath "Sysmon.exe"
     if (-not (Test-Path $sysmonExe)) {
         Write-Log "Sysmon executable not found after extraction!" "ERROR"
         exit 1
@@ -107,9 +122,9 @@ Write-Log "Installing Sysmon with configuration..."
 $installArgs = @(
     "-accepteula",
     "-i",
-    $SysmonConfigPath
+    $SysmonTargetConfigPath
 )
-$process = Start-Process -FilePath $sysmonExe -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+$process = Start-Process -FilePath $sysmonExe -ArgumentList$installArgs -Wait -PassThru -NoNewWindow
 if ($process.ExitCode -ne 0) {
     Write-Log "Sysmon installation failed with exit code $($process.ExitCode)" "ERROR"
     exit 1
@@ -159,7 +174,7 @@ if (Get-Service "WazuhSvc" -ErrorAction SilentlyContinue) {
 
 Write-Log "Downloading Wazuh Agent MSI from $wazuhMsiUrl..."
 try {
-    Invoke-WebRequest -Uri $wazuhMsiUrl -OutFile $wazuhMsiPath -UseBasicParsing
+    Invoke-WebRequest -Uri $wazuhMsiUrl -OutFile$wazuhMsiPath -UseBasicParsing
     Write-Log "Download complete."
 } catch {
     Write-Log "Failed to download Wazuh Agent: $($_.Exception.Message)" "ERROR"
@@ -175,7 +190,7 @@ $installArgs = @(
     "WAZUH_AGENT_GROUP=$WazuhAgentGroup",
     "WAZUH_AGENT_NAME=$env:COMPUTERNAME"
 )
-$process = Start-Process msiexec.exe -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+$process = Start-Process msiexec.exe -ArgumentList$installArgs -Wait -PassThru -NoNewWindow
 if ($process.ExitCode -ne 0) {
     Write-Log "Wazuh Agent installation failed with exit code $($process.ExitCode)" "ERROR"
     exit 1
@@ -190,18 +205,21 @@ Write-Log "Wazuh Agent installed successfully." "SUCCESS"
 Write-Log "=== Configuring Wazuh Agent ==="
 
 $wazuhInstallPath = "C:\Program Files (x86)\ossec-agent"
-$ossecConfPath = Join-Path $wazuhInstallPath "ossec.conf"
+$ossecConfPath = Join-Path$wazuhInstallPath "ossec.conf"
 
 if (Test-Path $ossecConfPath) {
     Write-Log "Backing up existing ossec.conf..."
     Copy-Item $ossecConfPath "$ossecConfPath.backup.$(Get-Date -Format 'yyyyMMddHHmmss')" -Force
 }
 
-# Generate ossec.conf with actual manager IP
-$ossecConfContent = Get-Content -Path "ossec.conf" -Raw
-$ossecConfContent = $ossecConfContent -replace "MANAGER_IP", $WazuhManagerIP
-$ossecConfContent | Set-Content -Path $ossecConfPath -Encoding UTF8
-Write-Log "Updated ossec.conf with Manager IP: $WazuhManagerIP"
+# Generate ossec.conf with actual manager IP using absolute path to template
+if (Test-Path $repoWazuhConfig) {$ossecConfContent = Get-Content -Path $repoWazuhConfig -Raw$ossecConfContent = $ossecConfContent -replace "MANAGER_IP", $WazuhManagerIP
+    $ossecConfContent \vert{} Set-Content -Path$ossecConfPath -Encoding UTF8
+    Write-Log "Updated ossec.conf from template with Manager IP: $WazuhManagerIP"
+} else {
+    Write-Log "Wazuh ossec.conf template not found at $repoWazuhConfig!" "ERROR"
+    exit 1
+}
 
 # Restart Wazuh Agent service
 Write-Log "Restarting Wazuh Agent service..."
@@ -258,11 +276,10 @@ $auditPolicies = @(
 )
 
 for ($i = 0; $i -lt $auditPolicies.Count; $i += 2) {
-    $category = $auditPolicies[$i]
-    $setting = $auditPolicies[$i + 1]
+    $category =$auditPolicies[$i]$setting = $auditPolicies[$i + 1]
     try {
         auditpol /set /subcategory:"$category" /$setting /quiet | Out-Null
-        Write-Log "Set audit policy: $category = $setting"
+        Write-Log "Set audit policy: $category =$setting"
     } catch {
         Write-Log "Failed to set audit policy: $category - $($_.Exception.Message)" "WARN"
     }
