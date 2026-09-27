@@ -9,12 +9,16 @@ services:
       - "9200:9200"
       - "9300:9300"
     environment:
-      - WAZUH_PASSWORD=${WAZUH_PASSWORD}
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
       - WAZUH_CLUSTER=single
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=false
     volumes:
       - wazuh_indexer_data:/var/lib/wazuh-indexer
       - wazuh_indexer_logs:/var/log/wazuh-indexer
+      - wazuh_indexer_certs:/usr/share/wazuh-indexer/config/certs
     networks:
       - soc-network
     ulimits:
@@ -24,6 +28,12 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -u admin:${INDEXER_PASSWORD} https://localhost:9200/_cluster/health 2>/dev/null | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   wazuh-manager:
     image: wazuh/wazuh-manager:${WAZUH_VERSION}
@@ -34,10 +44,13 @@ services:
       - "1515:1515"
       - "55000:55000"
     environment:
-      - WAZUH_PASSWORD=${WAZUH_PASSWORD}
-      - WAZUH_CLUSTER=single
-      - FILEBEAT_SSL_VERIFICATION_MODE=none
       - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=${API_PASSWORD}
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/wazuh/certs/root-ca.pem
     volumes:
       - ./configs/ossec.conf:/var/ossec/etc/ossec.conf:ro
       - ./configs/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
@@ -45,14 +58,22 @@ services:
       - wazuh_logs:/var/ossec/logs
       - wazuh_queue:/var/ossec/queue
       - wazuh_var:/var/ossec/var
+      - wazuh_indexer_certs:/etc/wazuh/certs:ro
     networks:
       - soc-network
     depends_on:
-      - wazuh-indexer
+      wazuh-indexer:
+        condition: service_healthy
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -u wazuh-wui:${API_PASSWORD} https://localhost:55000/healthcheck 2>/dev/null | grep -q 'ok'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   wazuh-dashboard:
     image: wazuh/wazuh-dashboard:${WAZUH_VERSION}
@@ -63,12 +84,29 @@ services:
     environment:
       - WAZUH_API_URL=https://wazuh-manager:55000
       - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - DASHBOARD_USERNAME=admin
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - NODE_OPTIONS=--max-old-space-size=2048
+      - OPENSEARCH_SSL_VERIFICATIONMODE=full
+      - OPENSEARCH_SSL_CERTIFICATEAUTHORITIES=/etc/wazuh/certs/root-ca.pem
+    volumes:
+      - wazuh_dashboard_data:/usr/share/wazuh-dashboard/data
+      - wazuh_indexer_certs:/etc/wazuh/certs:ro
     networks:
       - soc-network
     depends_on:
-      - wazuh-manager
-      - wazuh-indexer
+      wazuh-indexer:
+        condition: service_healthy
+      wazuh-manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k https://localhost:5601 2>/dev/null | grep -q 'Wazuh'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -105,6 +143,8 @@ volumes:
   wazuh_var:
   wazuh_indexer_data:
   wazuh_indexer_logs:
+  wazuh_indexer_certs:
+  wazuh_dashboard_data:
 
 networks:
   soc-network:

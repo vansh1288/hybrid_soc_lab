@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  generate-indexer-certs:
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION}
+    container_name: generate-indexer-certs
+    command: >
+      /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh
+      -cd /usr/share/wazuh-indexer/plugins/opensearch-security/securityconfig
+      -icl
+      -nhnv
+      -cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem
+      -cakey /usr/share/wazuh-indexer/config/certs/root-ca-key.pem
+    environment:
+      - WAZUH_PASSWORD=${WAZUH_PASSWORD}
+    volumes:
+      - wazuh_indexer_certs:/usr/share/wazuh-indexer/config/certs
+      - wazuh_indexer_data:/var/lib/wazuh-indexer
+    networks:
+      - soc-network
+    entrypoint: ["bash", "-c"]
+    # This is a one-time cert generation. In production, use the official
+    # Wazuh certificate generation utility or the single-node deploy script.
+
+volumes:
+  wazuh_indexer_certs:
+  wazuh_indexer_data:
+
+networks:
+  soc-network:
+    driver: bridge

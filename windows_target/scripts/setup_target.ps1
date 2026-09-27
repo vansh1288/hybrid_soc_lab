@@ -2,7 +2,7 @@
 .SYNOPSIS
     Setup script for Windows Target endpoint - Installs Sysmon and Wazuh Agent
 .DESCRIPTION
-    This script configures a Windows Server 2022 endpoint for the Hybrid Cloud SOC Lab.
+    This script configures a Windows Server 2022 endpoint for the Hybrid SOC Lab.
     It installs Sysmon with the SwiftOnSecurity-based configuration and the Wazuh Agent
     for telemetry forwarding to the Wazuh Manager.
 .NOTES
@@ -34,9 +34,9 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 # Establish absolute paths based on script location
-$scriptRoot = Split-Path -Parent$MyInvocation.MyCommand.Path
-$repoSysmonConfig = Join-Path$scriptRoot "..\sysmonconfig.xml"
-$repoWazuhConfig = Join-Path$scriptRoot "..\ossec.conf"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoSysmonConfig = Join-Path $scriptRoot "..\sysmonconfig.xml"
+$repoWazuhConfig = Join-Path $scriptRoot "..\ossec.conf"
 
 # Colors for output - Fixed for PS 5.1 compatibility
 function Write-Log {
@@ -59,7 +59,7 @@ if (-not (Test-IsAdmin)) {
     exit 1
 }
 
-Write-Log "Starting Windows Target Setup for Hybrid Cloud SOC Lab"
+Write-Log "Starting Windows Target Setup for Hybrid SOC Lab"
 Write-Log "Wazuh Manager IP: $WazuhManagerIP"
 Write-Log "Sysmon Template: $repoSysmonConfig"
 
@@ -75,12 +75,12 @@ if (-not (Test-Path $DownloadPath)) {
 Write-Log "=== Installing Sysmon ==="
 
 $sysmonUrl = "https://download.sysinternals.com/files/Sysmon.zip"
-$sysmonZip = Join-Path$DownloadPath "Sysmon.zip"
-$sysmonExe = Join-Path$DownloadPath "Sysmon64.exe"
+$sysmonZip = Join-Path $DownloadPath "Sysmon.zip"
+$sysmonExe = Join-Path $DownloadPath "Sysmon64.exe"
 
 # Copy repo config to target path
 if (Test-Path $repoSysmonConfig) {
-    Copy-Item -Path $repoSysmonConfig -Destination$SysmonTargetConfigPath -Force
+    Copy-Item -Path $repoSysmonConfig -Destination $SysmonTargetConfigPath -Force
     Write-Log "Copied Sysmon template to $SysmonTargetConfigPath"
 } else {
     Write-Log "Sysmon config template not found at $repoSysmonConfig!" "ERROR"
@@ -101,7 +101,7 @@ if (Get-Service "Sysmon" -ErrorAction SilentlyContinue) {
 
 Write-Log "Downloading Sysmon from $sysmonUrl..."
 try {
-    Invoke-WebRequest -Uri $sysmonUrl -OutFile$sysmonZip -UseBasicParsing
+    Invoke-WebRequest -Uri $sysmonUrl -OutFile $sysmonZip -UseBasicParsing
     Write-Log "Download complete."
 } catch {
     Write-Log "Failed to download Sysmon: $($_.Exception.Message)" "ERROR"
@@ -109,9 +109,9 @@ try {
 }
 
 Write-Log "Extracting Sysmon..."
-Expand-Archive -Path $sysmonZip -DestinationPath$DownloadPath -Force
+Expand-Archive -Path $sysmonZip -DestinationPath $DownloadPath -Force
 if (-not (Test-Path $sysmonExe)) {
-    $sysmonExe = Join-Path$DownloadPath "Sysmon.exe"
+    $sysmonExe = Join-Path $DownloadPath "Sysmon.exe"
     if (-not (Test-Path $sysmonExe)) {
         Write-Log "Sysmon executable not found after extraction!" "ERROR"
         exit 1
@@ -124,7 +124,7 @@ $installArgs = @(
     "-i",
     $SysmonTargetConfigPath
 )
-$process = Start-Process -FilePath $sysmonExe -ArgumentList$installArgs -Wait -PassThru -NoNewWindow
+$process = Start-Process -FilePath $sysmonExe -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
 if ($process.ExitCode -ne 0) {
     Write-Log "Sysmon installation failed with exit code $($process.ExitCode)" "ERROR"
     exit 1
@@ -174,7 +174,7 @@ if (Get-Service "WazuhSvc" -ErrorAction SilentlyContinue) {
 
 Write-Log "Downloading Wazuh Agent MSI from $wazuhMsiUrl..."
 try {
-    Invoke-WebRequest -Uri $wazuhMsiUrl -OutFile$wazuhMsiPath -UseBasicParsing
+    Invoke-WebRequest -Uri $wazuhMsiUrl -OutFile $wazuhMsiPath -UseBasicParsing
     Write-Log "Download complete."
 } catch {
     Write-Log "Failed to download Wazuh Agent: $($_.Exception.Message)" "ERROR"
@@ -190,7 +190,7 @@ $installArgs = @(
     "WAZUH_AGENT_GROUP=$WazuhAgentGroup",
     "WAZUH_AGENT_NAME=$env:COMPUTERNAME"
 )
-$process = Start-Process msiexec.exe -ArgumentList$installArgs -Wait -PassThru -NoNewWindow
+$process = Start-Process msiexec.exe -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
 if ($process.ExitCode -ne 0) {
     Write-Log "Wazuh Agent installation failed with exit code $($process.ExitCode)" "ERROR"
     exit 1
@@ -205,7 +205,7 @@ Write-Log "Wazuh Agent installed successfully." "SUCCESS"
 Write-Log "=== Configuring Wazuh Agent ==="
 
 $wazuhInstallPath = "C:\Program Files (x86)\ossec-agent"
-$ossecConfPath = Join-Path$wazuhInstallPath "ossec.conf"
+$ossecConfPath = Join-Path $wazuhInstallPath "ossec.conf"
 
 if (Test-Path $ossecConfPath) {
     Write-Log "Backing up existing ossec.conf..."
@@ -213,8 +213,10 @@ if (Test-Path $ossecConfPath) {
 }
 
 # Generate ossec.conf with actual manager IP using absolute path to template
-if (Test-Path $repoWazuhConfig) {$ossecConfContent = Get-Content -Path $repoWazuhConfig -Raw$ossecConfContent = $ossecConfContent -replace "MANAGER_IP", $WazuhManagerIP
-    $ossecConfContent \vert{} Set-Content -Path$ossecConfPath -Encoding UTF8
+if (Test-Path $repoWazuhConfig) {
+    $ossecConfContent = Get-Content -Path $repoWazuhConfig -Raw
+    $ossecConfContent = $ossecConfContent -replace "MANAGER_IP", $WazuhManagerIP
+    $ossecConfContent | Set-Content -Path $ossecConfPath -Encoding UTF8
     Write-Log "Updated ossec.conf from template with Manager IP: $WazuhManagerIP"
 } else {
     Write-Log "Wazuh ossec.conf template not found at $repoWazuhConfig!" "ERROR"
@@ -276,10 +278,11 @@ $auditPolicies = @(
 )
 
 for ($i = 0; $i -lt $auditPolicies.Count; $i += 2) {
-    $category =$auditPolicies[$i]$setting = $auditPolicies[$i + 1]
+    $category = $auditPolicies[$i]
+    $setting = $auditPolicies[$i + 1]
     try {
         auditpol /set /subcategory:"$category" /$setting /quiet | Out-Null
-        Write-Log "Set audit policy: $category =$setting"
+        Write-Log "Set audit policy: $category = $setting"
     } catch {
         Write-Log "Failed to set audit policy: $category - $($_.Exception.Message)" "WARN"
     }
@@ -327,7 +330,29 @@ if (-not (Test-Path "C:\Windows\Temp\PowerShellTranscripts")) {
 Write-Log "PowerShell Transcription enabled." "SUCCESS"
 
 # ============================================================
-# 7. VERIFY INSTALLATION
+# 7. CONFIGURE WINDOWS DEFENDER EXCLUSIONS FOR WAZUH
+# ============================================================
+Write-Log "=== Configuring Windows Defender Exclusions ==="
+
+$exclusions = @(
+    "C:\Program Files (x86)\ossec-agent",
+    "C:\Program Files (x86)\ossec-agent\logs",
+    "C:\Program Files (x86)\ossec-agent\queue"
+)
+
+foreach ($exclusion in $exclusions) {
+    try {
+        Add-MpPreference -ExclusionPath $exclusion -ErrorAction Stop
+        Write-Log "Added Defender exclusion: $exclusion"
+    } catch {
+        Write-Log "Failed to add Defender exclusion $exclusion: $($_.Exception.Message)" "WARN"
+    }
+}
+
+Write-Log "Windows Defender exclusions configured." "SUCCESS"
+
+# ============================================================
+# 8. VERIFY INSTALLATION
 # ============================================================
 Write-Log "=== Verification ==="
 
@@ -367,6 +392,7 @@ Write-Log "Sysmon: Installed and running with custom config"
 Write-Log "Wazuh Agent: Installed, configured, and connected to $WazuhManagerIP"
 Write-Log "Audit Policies: Configured for security monitoring"
 Write-Log "PowerShell Logging: Script Block Logging + Transcription enabled"
+Write-Log "Windows Defender: Exclusions added for Wazuh Agent"
 Write-Log ""
 Write-Log "Next steps:"
 Write-Log "1. Verify alerts in Wazuh Dashboard (VM1:5601)"

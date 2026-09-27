@@ -32,7 +32,15 @@ else
 fi
 
 # Validate required variables
-required_vars=("WAZUH_PASSWORD" "VM2_IP" "N8N_ENCRYPTION_KEY" "N8N_WEBHOOK_URL" "WAZUH_VERSION")
+required_vars=(
+    "WAZUH_VERSION"
+    "INDEXER_PASSWORD"
+    "API_PASSWORD"
+    "DASHBOARD_PASSWORD"
+    "VM2_IP"
+    "N8N_ENCRYPTION_KEY"
+    "N8N_WEBHOOK_URL"
+)
 for var in "${required_vars[@]}"; do
     if [[ -z "${!var:-}" ]]; then
         log_error "Required variable $var is not set in .env"
@@ -43,6 +51,16 @@ done
 log_info "Starting VM1 setup: Wazuh Indexer + Manager + Dashboard + n8n SOAR"
 log_info "VM2 IP (Splunk/NIDS): ${VM2_IP}"
 log_info "Wazuh Version: ${WAZUH_VERSION}"
+
+# Configure kernel parameters for OpenSearch/Wazuh Indexer
+log_info "Configuring kernel parameters..."
+if ! grep -q "vm.max_map_count=262144" /etc/sysctl.conf; then
+    echo "vm.max_map_count=262144" >> /etc/sysctl.conf
+    sysctl -w vm.max_map_count=262144
+    log_info "Set vm.max_map_count=262144"
+else
+    log_info "vm.max_map_count already configured"
+fi
 
 # Update system
 log_info "Updating system packages..."
@@ -127,7 +145,7 @@ sleep 45
 # Check Wazuh Indexer health
 log_info "Checking Wazuh Indexer health..."
 for i in {1..15}; do
-    if curl -k -s -u "admin:${WAZUH_PASSWORD}" https://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status":"green"\|"status":"yellow"'; then
+    if curl -k -s -u "admin:${INDEXER_PASSWORD}" https://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status":"green"\|"status":"yellow"'; then
         log_info "Wazuh Indexer is healthy"
         break
     fi
@@ -138,7 +156,7 @@ done
 # Check Wazuh Manager health
 log_info "Checking Wazuh Manager health..."
 for i in {1..15}; do
-    if curl -k -s -u "wazuh:${WAZUH_PASSWORD}" https://localhost:55000/healthcheck 2>/dev/null | grep -q "ok"; then
+    if curl -k -s -u "wazuh-wui:${API_PASSWORD}" https://localhost:55000/healthcheck 2>/dev/null | grep -q "ok"; then
         log_info "Wazuh Manager is healthy"
         break
     fi
@@ -212,19 +230,24 @@ log_info "=========================================="
 log_info "VM1 Setup Complete!"
 log_info "=========================================="
 log_info "Wazuh Dashboard: https://$(hostname -I | awk '{print $1}'):5601"
-log_info "  Username: wazuh"
-log_info "  Password: ${WAZUH_PASSWORD}"
+log_info "  Username: admin"
+log_info "  Password: \${DASHBOARD_PASSWORD}"
 log_info ""
 log_info "n8n SOAR: http://$(hostname -I | awk '{print $1}'):5678"
 log_info "  Webhook endpoint: ${N8N_WEBHOOK_URL}"
 log_info ""
 log_info "Wazuh API: https://$(hostname -I | awk '{print $1}'):55000"
-log_info "Wazuh Indexer: https://$(hostname -I | awk '{print $1}'):9200"
+log_info "  Username: wazuh-wui"
+log_info "  Password: \${API_PASSWORD}"
 log_info ""
-log_info "Syslog forwarding to VM2 (${VM2_IP}:514) for alerts level >= 12"
+log_info "Wazuh Indexer: https://$(hostname -I | awk '{print $1}'):9200"
+log_info "  Username: admin"
+log_info "  Password: \${INDEXER_PASSWORD}"
+log_info ""
+log_info "Syslog forwarding to VM2 (${VM2_IP}:514) for alerts level >= 10"
 log_info ""
 log_info "Next steps:"
-log_info "1. Configure n8n credentials: VirusTotal API key (${VIRUSTOTAL_API_KEY:-not set}) and Slack Webhook URL (${SLACK_WEBHOOK_URL:-not set})"
+log_info "1. Configure n8n credentials: VirusTotal API key and Slack Webhook URL"
 log_info "2. Activate the 'SOC SOAR - Wazuh Alert Enrichment' workflow in n8n"
 log_info "3. Deploy Wazuh agents on target endpoints (${TARGET_IP:-not set}) pointing to this manager"
 log_info "=========================================="
