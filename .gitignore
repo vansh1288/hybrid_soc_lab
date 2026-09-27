@@ -1,0 +1,53 @@
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Generated configs
+vm1_wazuh_soar/configs/ossec.conf
+
+# Docker
+docker-compose.override.yml
+
+# Splunk
+/opt/splunk/
+*.spl
+
+# Suricata logs
+/var/log/suricata/
+*.eve.json
+*.pcap
+
+# Wazuh
+/var/ossec/logs/
+/var/ossec/queue/
+/var/ossec/var/
+
+# n8n
+/home/node/.n8n/database.sqlite
+
+# Windows
+*.msi
+*.exe
+*.zip
+C:\Temp\
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

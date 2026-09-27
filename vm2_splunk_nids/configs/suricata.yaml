@@ -147,8 +147,7 @@ af-packet:
     block-size: 1048576
     block-timeout: 10
     xdp-mode: driver
-    copy-mode: ips
-    copy-iface: eth0
+    copy-mode: tap
     use-emergency-flush: yes
   # Add additional interfaces for multi-homed setups
   # - interface: eth1

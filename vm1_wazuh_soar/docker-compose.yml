@@ -1,6 +1,75 @@
 version: '3.8'
 
 services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION}
+    container_name: wazuh-indexer
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - WAZUH_PASSWORD=${WAZUH_PASSWORD}
+      - WAZUH_CLUSTER=single
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - wazuh_indexer_data:/var/lib/wazuh-indexer
+      - wazuh_indexer_logs:/var/log/wazuh-indexer
+    networks:
+      - soc-network
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:${WAZUH_VERSION}
+    container_name: wazuh-manager
+    restart: unless-stopped
+    ports:
+      - "1514:1514/udp"
+      - "1515:1515"
+      - "55000:55000"
+    environment:
+      - WAZUH_PASSWORD=${WAZUH_PASSWORD}
+      - WAZUH_CLUSTER=single
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - INDEXER_URL=https://wazuh-indexer:9200
+    volumes:
+      - ./configs/ossec.conf:/var/ossec/etc/ossec.conf:ro
+      - ./configs/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
+      - wazuh_data:/var/ossec/data
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var:/var/ossec/var
+    networks:
+      - soc-network
+    depends_on:
+      - wazuh-indexer
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:${WAZUH_VERSION}
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - WAZUH_API_URL=https://wazuh-manager:55000
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - NODE_OPTIONS=--max-old-space-size=2048
+    networks:
+      - soc-network
+    depends_on:
+      - wazuh-manager
+      - wazuh-indexer
+
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n-soar
@@ -8,7 +77,7 @@ services:
     ports:
       - "5678:5678"
     environment:
-      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
       - GENERIC_TIMEZONE=Asia/Kolkata
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_HOST=0.0.0.0
@@ -28,54 +97,14 @@ services:
       retries: 3
       start_period: 40s
 
-  wazuh-dashboard:
-    image: wazuh/wazuh-dashboard:4.7.0
-    container_name: wazuh-dashboard
-    restart: unless-stopped
-    ports:
-      - "5601:5601"
-    environment:
-      - WAZUH_API_URL=https://wazuh-manager:55000
-      - NODE_OPTIONS=--max-old-space-size=2048
-    networks:
-      - soc-network
-    depends_on:
-      - wazuh-manager
-
-  wazuh-manager:
-    image: wazuh/wazuh-manager:4.7.0
-    container_name: wazuh-manager
-    restart: unless-stopped
-    ports:
-      - "1514:1514/udp"
-      - "1515:1515"
-      - "55000:55000"
-    environment:
-      - WAZUH_CLUSTER=single
-      - WAZUH_PASSWORD=${WAZUH_PASSWORD:-StrongPassword123!}
-      - FILEBEAT_SSL_VERIFICATION_MODE=none
-    volumes:
-      - ./configs/ossec.conf:/wazuh-config/ossec.conf:ro
-      - ./configs/local_rules.xml:/wazuh-config/rules/local_rules.xml:ro
-      - wazuh_data:/var/ossec/data
-      - wazuh_logs:/var/ossec/logs
-      - wazuh_etc:/var/ossec/etc
-      - wazuh_queue:/var/ossec/queue
-      - wazuh_var:/var/ossec/var
-    networks:
-      - soc-network
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-
 volumes:
   n8n_data:
   wazuh_data:
   wazuh_logs:
-  wazuh_etc:
   wazuh_queue:
   wazuh_var:
+  wazuh_indexer_data:
+  wazuh_indexer_logs:
 
 networks:
   soc-network:

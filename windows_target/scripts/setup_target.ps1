@@ -21,7 +21,7 @@ param(
     [string]$SysmonTargetConfigPath = "C:\Windows\System32\drivers\etc\sysmonconfig.xml",
 
     [Parameter(Mandatory=$false)]
-    [string]$WazuhAgentVersion = "4.7.0",
+    [string]$WazuhAgentVersion = "4.9.0",
 
     [Parameter(Mandatory=$false)]
     [string]$DownloadPath = "C:\Temp",

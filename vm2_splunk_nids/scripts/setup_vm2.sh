@@ -20,6 +20,15 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Validate required variables
+required_vars=("SPLUNK_PASSWORD" "SURICATA_INTERFACE" "N8N_WEBHOOK_URL")
+for var in "${required_vars[@]}"; do
+    if [[ -z "${!var:-}" ]]; then
+        log_error "Required variable $var is not set in environment"
+        exit 1
+    fi
+done
+
 # Configuration variables
 SPLUNK_VERSION="9.2.1"
 SPLUNK_BUILD="78803f08aabb"
@@ -27,8 +36,6 @@ SPLUNK_FILENAME="splunk-${SPLUNK_VERSION}-${SPLUNK_BUILD}-linux-amd64.deb"
 SPLUNK_URL="https://download.splunk.com/products/splunk/releases/${SPLUNK_VERSION}/linux/${SPLUNK_FILENAME}"
 SPLUNK_HOME="/opt/splunk"
 SPLUNK_USER="splunk"
-SPLUNK_PASSWORD="${SPLUNK_PASSWORD:-Changeme123!}"
-SURICATA_INTERFACE="${SURICATA_INTERFACE:-eth0}"
 
 log_info "Starting VM2 setup: Splunk Enterprise + Suricata NIDS"
 log_info "Splunk Version: ${SPLUNK_VERSION}"
@@ -197,7 +204,7 @@ sudo -u "${SPLUNK_USER}" "${SPLUNK_HOME}/bin/splunk" add tcp 514 -sourcetype waz
 # Create Splunk saved searches for alerting
 log_info "Creating Splunk saved searches..."
 mkdir -p "${SPLUNK_HOME}/etc/apps/search/local"
-cat > "${SPLUNK_HOME}/etc/apps/search/local/savedsearches.conf" <<'SEARCHES'
+cat > "${SPLUNK_HOME}/etc/apps/search/local/savedsearches.conf" <<SEARCHES
 [Wazuh Critical Alerts - LSASS Access]
 search = index=main sourcetype=wazuh_json rule.level>=12 (win.eventdata.targetimage="*lsass.exe" OR win.eventdata.grantedaccess IN ("0x1010","0x1f0fff","0x001fffff"))
 dispatch.earliest_time = -5m
@@ -206,7 +213,7 @@ alert.track = 1
 alert.severity = 1
 cron_schedule = */5 * * * *
 action.webhook = 1
-action.webhook.param.url = http://<N8N_WEBHOOK_URL>/webhook/soc-alert
+action.webhook.param.url = ${N8N_WEBHOOK_URL}
 action.webhook.param.payload_format = json
 alert.suppress = 1
 alert.suppress.period = 300
@@ -219,7 +226,7 @@ alert.track = 1
 alert.severity = 2
 cron_schedule = */5 * * * *
 action.webhook = 1
-action.webhook.param.url = http://<N8N_WEBHOOK_URL>/webhook/soc-alert
+action.webhook.param.url = ${N8N_WEBHOOK_URL}
 action.webhook.param.payload_format = json
 alert.suppress = 1
 alert.suppress.period = 300
@@ -232,7 +239,7 @@ alert.track = 1
 alert.severity = 1
 cron_schedule = */5 * * * *
 action.webhook = 1
-action.webhook.param.url = http://<N8N_WEBHOOK_URL>/webhook/soc-alert
+action.webhook.param.url = ${N8N_WEBHOOK_URL}
 action.webhook.param.payload_format = json
 alert.suppress = 1
 alert.suppress.period = 300
@@ -245,7 +252,7 @@ alert.track = 1
 alert.severity = 2
 cron_schedule = */5 * * * *
 action.webhook = 1
-action.webhook.param.url = http://<N8N_WEBHOOK_URL>/webhook/soc-alert
+action.webhook.param.url = ${N8N_WEBHOOK_URL}
 action.webhook.param.payload_format = json
 alert.suppress = 1
 alert.suppress.period = 300
