@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+!.env.example
 
 # Generated configs
 vm1_wazuh_soar/configs/ossec.conf
@@ -22,6 +23,12 @@ docker-compose.override.yml
 /var/ossec/logs/
 /var/ossec/queue/
 /var/ossec/var/
+
+# Wazuh certificates (generated)
+vm1_wazuh_soar/certs/
+*.pem
+*.key
+*.crt
 
 # n8n
 /home/node/.n8n/database.sqlite

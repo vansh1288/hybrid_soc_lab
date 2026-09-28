@@ -210,7 +210,7 @@
   </wodle>
 
   <labels>
-    <label key="environment">production</label>
+    <label key="environment">lab</label>
     <label key="role">tier1-siem-soar</label>
   </labels>
 </ossec_config>

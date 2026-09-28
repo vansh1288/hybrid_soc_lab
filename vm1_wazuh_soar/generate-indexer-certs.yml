@@ -5,12 +5,16 @@ services:
     image: wazuh/wazuh-indexer:${WAZUH_VERSION}
     container_name: generate-indexer-certs
     command: >
+      bash -c "
       /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh
       -cd /usr/share/wazuh-indexer/plugins/opensearch-security/securityconfig
       -icl
       -nhnv
       -cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem
       -cakey /usr/share/wazuh-indexer/config/certs/root-ca-key.pem
+      -key /usr/share/wazuh-indexer/config/certs/admin-key.pem
+      -cert /usr/share/wazuh-indexer/config/certs/admin.pem
+      "
     environment:
       - WAZUH_PASSWORD=${WAZUH_PASSWORD}
     volumes:

@@ -5,6 +5,8 @@ Windows telemetry → Wazuh SIEM → Splunk → n8n SOAR → Slack.
 
 **Status**: Configuration complete. **NOT VERIFIED** end-to-end — requires runtime deployment and testing.
 
+> **Note:** This is an on-premises hybrid SOC lab. No cloud infrastructure is required or included.
+
 ## Architecture
 
 ```text

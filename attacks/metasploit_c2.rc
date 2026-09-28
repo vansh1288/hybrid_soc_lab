@@ -44,7 +44,7 @@ setg EnableStageEncoding true
 setg StageEncoder x64/xor
 
 # RC4 password for encrypted payloads (CHANGE THIS - generate with: openssl rand -hex 16)
-setg RC4PASSWORD labpassword123
+setg RC4PASSWORD <RC4_PASSWORD>
 
 # ============================================================
 # PAYLOAD GENERATION - Windows x64 Meterpreter Reverse TCP
